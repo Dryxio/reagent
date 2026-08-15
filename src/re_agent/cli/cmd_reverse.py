@@ -35,15 +35,19 @@ def cmd_reverse(args: argparse.Namespace) -> int:
         from re_agent.orchestrator.single import reverse_single
 
         class_name = args.class_name or ""
-        function_name = ""
+        function_name = args.function_name or ""
 
         # Try to resolve function metadata from the backend
-        if not class_name:
+        if not class_name or not function_name:
             try:
                 dec = backend.decompile(args.address)
                 if dec.name and "::" in dec.name:
-                    class_name, _, function_name = dec.name.rpartition("::")
-                elif dec.name:
+                    detected_class, _, detected_function = dec.name.rpartition("::")
+                    if not class_name:
+                        class_name = detected_class
+                    if not function_name:
+                        function_name = detected_function
+                elif dec.name and not function_name:
                     function_name = dec.name
             except Exception:
                 pass  # Best-effort; proceed with empty metadata
@@ -96,6 +100,8 @@ def _dry_run(args: argparse.Namespace, config: object) -> int:
         print(f"Would reverse: {args.address}")
         if args.class_name:
             print(f"  Class: {args.class_name}")
+        if args.function_name:
+            print(f"  Function: {args.function_name}")
         return 0
 
     if args.class_name:

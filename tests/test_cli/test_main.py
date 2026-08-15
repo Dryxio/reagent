@@ -56,11 +56,15 @@ output:
     assert result == 0
 
 
-def test_reverse_dry_run(tmp_path: Path) -> None:
+def test_reverse_dry_run(tmp_path: Path, capsys) -> None:
     config_path = tmp_path / "re-agent.yaml"
     config_path.write_text("llm:\n  provider: claude\n")
-    result = main(["--config", str(config_path), "reverse", "--address", "0x6F86A0", "--dry-run"])
+    result = main(["--config", str(config_path), "reverse", "--address", "0x6F86A0", "--class", "CVehicleModelInfo", "--function", "SetupCommonData", "--dry-run"])
+    captured = capsys.readouterr()
     assert result == 0
+    assert "Would reverse: 0x6F86A0" in captured.out
+    assert "Class: CVehicleModelInfo" in captured.out
+    assert "Function: SetupCommonData" in captured.out
 
 
 def test_reverse_no_target(tmp_path: Path) -> None:
