@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "auto-re-agent"
-version = "0.2.1"
+version = "0.3.0"
 description = "Evidence-driven autonomous reverse-engineering agent with agentic Ghidra analysis, independent LLM verification, candidate validation, and parity checks"
 readme = "README.md"
 license = "MIT"
@@ -45,6 +45,7 @@ dependencies = [
 [project.optional-dependencies]
 ghidra-bridge = ["ghidra-ai-bridge>=0.2.0"]
 headless = ["ghidra-ai-bridge[headless]>=0.2.0"]
+benchmark = ["pefile>=2024.8.26", "unicorn>=2.1"]
 dev = ["pytest>=8.0", "pytest-cov>=5.0", "ruff>=0.8", "mypy>=1.13"]
 
 [project.scripts]

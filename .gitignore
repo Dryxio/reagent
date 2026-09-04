@@ -10,3 +10,6 @@ build/
 .cache/
 *.egg
 .env
+
+.DS_Store
+.coverage

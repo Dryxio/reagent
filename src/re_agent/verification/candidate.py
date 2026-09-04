@@ -1,6 +1,8 @@
 """Candidate overlays and configurable build/test validation gates."""
+
 from __future__ import annotations
 
+import json
 import os
 import re
 import shutil
@@ -10,15 +12,22 @@ from pathlib import Path
 
 from re_agent.config.schema import ValidationConfig
 from re_agent.core.models import FunctionTarget, SourceMatch, ValidationVerdict, Verdict
+from re_agent.utils.process import run_process
 
 
 def extract_candidate_body(code: str) -> str:
     """Extract the outer C++ body from generated code."""
+    from re_agent.parity.source_indexer import SourceIndexer
+
+    if code.lstrip().startswith(("namespace ", "class ", "struct ")):
+        raise ValueError("Candidate must contain exactly one function, without namespace/class wrappers")
     open_brace = code.find("{")
-    close_brace = code.rfind("}")
-    if open_brace == -1 or close_brace <= open_brace:
-        return code.strip()
-    return code[open_brace:close_brace + 1].strip()
+    if open_brace < 0:
+        raise ValueError("Candidate has no function body")
+    close_brace = SourceIndexer._find_matching_brace(code, open_brace)
+    if close_brace is None or code[close_brace + 1 :].strip().strip(";"):
+        raise ValueError("Candidate must contain exactly one complete function body")
+    return code[open_brace : close_brace + 1].strip()
 
 
 def create_candidate_overlay(
@@ -43,16 +52,13 @@ def create_candidate_overlay(
                 overlay_root,
                 dirs_exist_ok=True,
                 symlinks=True,
-                ignore=shutil.ignore_patterns(
-                    ".git", ".venv", "build", "reports", "__pycache__", "*.pyc"
-                ),
+                ignore=shutil.ignore_patterns(".git", ".venv", "build", "reports", "__pycache__", "*.pyc"),
             )
+            _remap_links(overlay_root, project_root)
         else:
             overlay_root = report_dir / "candidates" / safe_address
         overlay_root.mkdir(parents=True, exist_ok=True)
-        (overlay_root / ".re-agent-overlay").write_text(
-            "schema_version=1\n", encoding="utf-8"
-        )
+        (overlay_root / ".re-agent-overlay").write_text("schema_version=1\n", encoding="utf-8")
         if source is None:
             safe_class_name = _sanitize_path_component(target.class_name)
             safe_function_name = _sanitize_path_component(target.function_name)
@@ -78,7 +84,7 @@ def create_candidate_overlay(
         if source.body_end <= source.body_start:
             raise ValueError(f"Source body offsets unavailable for {source.path}")
         body = extract_candidate_body(code)
-        overlaid = original[:source.body_start] + body + original[source.body_end:]
+        overlaid = original[: source.body_start] + body + original[source.body_end :]
         candidate_file.write_text(overlaid, encoding="utf-8")
         return candidate_file
     except Exception:
@@ -118,7 +124,7 @@ def validate_candidate(
             "Candidate has no source location; isolated project commands must explicitly use {candidate_file}",
             candidate_file,
         )
-    if not commands:
+    if not commands and not config.differential_cases_file:
         return ValidationVerdict(
             verdict=Verdict.UNKNOWN,
             summary="Candidate overlay created; no build or test commands configured",
@@ -136,38 +142,59 @@ def validate_candidate(
             )
 
     env = os.environ.copy()
-    env.update({
-        "RE_AGENT_CANDIDATE_FILE": str(candidate_file.resolve()),
-        "RE_AGENT_OVERLAY_ROOT": str(_overlay_root(candidate_file).resolve()),
-        "RE_AGENT_SOURCE_FILE": source_file or "",
-    })
+    env.update(
+        {
+            "RE_AGENT_CANDIDATE_FILE": str(candidate_file.resolve()),
+            "RE_AGENT_OVERLAY_ROOT": str(_overlay_root(candidate_file).resolve()),
+            "RE_AGENT_SOURCE_FILE": source_file or "",
+        }
+    )
     findings: list[str] = []
     for kind, command in commands:
-        expanded = command
-        replacements = {
-            "{candidate_file}": str(candidate_file.resolve()),
-            "{overlay_root}": str(_overlay_root(candidate_file).resolve()),
-            "{source_file}": source_file or "",
-        }
-        for placeholder, value in replacements.items():
-            expanded = expanded.replace(placeholder, value)
+        expanded = _expand_shell(command)
         try:
-            proc = subprocess.run(
+            proc = run_process(
                 ["/bin/sh", "-lc", expanded],
                 cwd=_working_directory(config, candidate_file),
                 env=env,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                timeout=config.command_timeout_s,
-                check=False,
+                timeout_s=config.command_timeout_s,
             )
         except subprocess.TimeoutExpired:
             return _failed(f"{kind} command timed out: {command}", candidate_file, findings)
-        tail = "\n".join(proc.stdout.splitlines()[-20:])
+        tail = "\n".join((proc.stdout + proc.stderr).splitlines()[-20:])
         findings.append(f"{kind}: {command} -> exit {proc.returncode}\n{tail}".rstrip())
         if proc.returncode != 0:
             return _failed(f"Candidate {kind} gate failed", candidate_file, findings)
+
+    if config.differential_cases_file:
+        from re_agent.verification.differential import compare_commands
+
+        cases = json.loads(Path(config.differential_cases_file).read_text(encoding="utf-8"))
+        if not isinstance(cases, list):
+            return _failed("Differential cases must be a JSON array", candidate_file)
+
+        def expand_args(args: list[str]) -> list[str]:
+            values = {
+                "{candidate_file}": str(candidate_file.resolve()),
+                "{overlay_root}": str(_overlay_root(candidate_file).resolve()),
+            }
+            result = []
+            for arg in args:
+                for key, value in values.items():
+                    arg = arg.replace(key, value)
+                result.append(arg)
+            return result
+
+        comparison = compare_commands(
+            expand_args(config.differential_reference),
+            expand_args(config.differential_candidate),
+            cases,
+            Path(_working_directory(config, candidate_file)),
+            config.command_timeout_s,
+        )
+        findings.extend(comparison.findings)
+        if not comparison.passed:
+            return _failed("Candidate differential gate failed", candidate_file, findings)
 
     if not config.trust_configured_commands:
         return ValidationVerdict(
@@ -182,7 +209,7 @@ def validate_candidate(
 
     return ValidationVerdict(
         verdict=Verdict.PASS,
-        summary="All configured candidate build/test gates passed",
+        summary="All configured candidate validation gates passed",
         findings=findings,
         overlay_file=str(candidate_file),
     )
@@ -220,7 +247,7 @@ def _overlay_root(candidate_file: Path) -> Path:
     if "candidates" in parts:
         idx = parts.index("candidates")
         if idx + 1 < len(parts):
-            return Path(*parts[:idx + 2])
+            return Path(*parts[: idx + 2])
     return candidate_file.parent
 
 
@@ -229,8 +256,11 @@ def _working_directory(config: ValidationConfig, candidate_file: Path) -> str:
     value = config.working_directory.replace("{overlay_root}", overlay_root)
     if config.copy_project and config.working_directory == ".":
         return overlay_root
-    if config.copy_project and not Path(value).is_absolute():
-        return str(Path(overlay_root) / value)
+    if config.copy_project:
+        resolved = (Path(overlay_root) / value).resolve()
+        if not resolved.is_relative_to(Path(overlay_root).resolve()):
+            raise ValueError("Isolated validation working_directory must remain inside the overlay")
+        return str(resolved)
     return value
 
 
@@ -245,3 +275,57 @@ def _failed(
         findings=findings or [],
         overlay_file=str(candidate_file),
     )
+
+
+def _remap_links(overlay: Path, project: Path) -> None:
+    """Keep internal links inside the copy; reject external and broken links."""
+    root = project.resolve()
+    for directory, dirs, files in os.walk(overlay, followlinks=False):
+        for name in [*dirs, *files]:
+            link = Path(directory) / name
+            if not link.is_symlink():
+                continue
+            original = root / link.relative_to(overlay)
+            try:
+                target = original.resolve(strict=True).relative_to(root)
+            except (ValueError, OSError, RuntimeError) as exc:
+                raise ValueError(f"Cannot isolate source symlink: {original}") from exc
+            link.unlink()
+            link.symlink_to(os.path.relpath(overlay / target, link.parent), target_is_directory=original.is_dir())
+
+
+def _expand_shell(command: str) -> str:
+    """Expand placeholders via environment values, respecting existing quotes."""
+    markers = {
+        "{candidate_file}": "RE_AGENT_CANDIDATE_FILE",
+        "{overlay_root}": "RE_AGENT_OVERLAY_ROOT",
+        "{source_file}": "RE_AGENT_SOURCE_FILE",
+    }
+    quote = ""
+    output = ""
+    index = 0
+    while index < len(command):
+        marker = next((m for m in markers if command.startswith(m, index)), None)
+        if marker:
+            variable = "${" + markers[marker] + "}"
+            if quote == "'":
+                output += "'\"" + variable + "\"'"
+            elif quote == '"':
+                output += variable
+            else:
+                output += '"' + variable + '"'
+            index += len(marker)
+            continue
+        char = command[index]
+        if char == "\\" and quote != "'" and index + 1 < len(command):
+            output += command[index : index + 2]
+            index += 2
+            continue
+        if char in {"'", '"'}:
+            if not quote:
+                quote = char
+            elif quote == char:
+                quote = ""
+        output += char
+        index += 1
+    return output

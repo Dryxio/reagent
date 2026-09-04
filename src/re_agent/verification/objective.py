@@ -1,7 +1,9 @@
 """Conservative structural verification that does not rely on an LLM."""
+
 from __future__ import annotations
 
 import json
+import re
 
 from re_agent.backend.protocol import REBackend
 from re_agent.core.models import FunctionTarget, ObjectiveVerdict, Verdict
@@ -40,6 +42,17 @@ def verify_candidate(
         )
 
     decompile_body = strip_comments(_extract_body(decompile.raw_output))
+    constant_return = re.compile(r"\{\s*return\s+(-?(?:0x[0-9a-fA-F]+|[0-9]+))\s*;\s*\}")
+    expected_constant = constant_return.fullmatch(decompile_body.strip())
+    actual_constant = constant_return.fullmatch(source_body.strip())
+    if expected_constant and actual_constant:
+        checks_run += 1
+
+        def integer(text: str) -> int:
+            return int(text, 16) if "0x" in text.lower() else int(text, 10)
+
+        if integer(expected_constant.group(1)) != integer(actual_constant.group(1)):
+            findings.append("Constant return value differs from decompiled evidence")
     decompile_flow_count = count_control_flow(decompile_body)
     if decompile.callees is not None:
         checks_run += 1
@@ -69,8 +82,7 @@ def verify_candidate(
             call_diff = abs(asm.call_count - source_call_count)
             if call_diff >= call_count_tolerance and source_call_count < asm.call_count:
                 findings.append(
-                    f"ASM call mismatch: disassembly has {asm.call_count} calls, "
-                    f"candidate has {source_call_count}"
+                    f"ASM call mismatch: disassembly has {asm.call_count} calls, candidate has {source_call_count}"
                 )
 
     if getattr(backend.capabilities, "has_cfg", False):
@@ -82,8 +94,7 @@ def verify_candidate(
             candidate_blocks = source_flow_count + 1
             if len(cfg) - candidate_blocks >= control_flow_tolerance:
                 findings.append(
-                    f"CFG mismatch: Ghidra has {len(cfg)} basic blocks, "
-                    f"candidate implies about {candidate_blocks}"
+                    f"CFG mismatch: Ghidra has {len(cfg)} basic blocks, candidate implies about {candidate_blocks}"
                 )
 
     if getattr(backend.capabilities, "has_pcode", False):
@@ -92,23 +103,17 @@ def verify_candidate(
             pcode = [item for item in pcode if isinstance(item, dict) and item.get("opcode")]
         if isinstance(pcode, list) and pcode:
             checks_run += 1
-            opcodes = [
-                str(item.get("opcode", "")).upper()
-                for item in pcode
-                if isinstance(item, dict)
-            ]
+            opcodes = [str(item.get("opcode", "")).upper() for item in pcode if isinstance(item, dict)]
             ir_calls = sum(op in {"CALL", "CALLIND"} for op in opcodes)
             if ir_calls - source_call_count >= call_count_tolerance:
                 findings.append(
-                    f"P-code call mismatch: normalized IR has {ir_calls} calls, "
-                    f"candidate has {source_call_count}"
+                    f"P-code call mismatch: normalized IR has {ir_calls} calls, candidate has {source_call_count}"
                 )
             ir_returns = sum(op == "RETURN" for op in opcodes)
             source_returns = source_body.count("return")
             if ir_returns >= 2 and source_returns == 0:
                 findings.append(
-                    f"P-code return mismatch: normalized IR has {ir_returns} returns, "
-                    "candidate has no explicit return"
+                    f"P-code return mismatch: normalized IR has {ir_returns} returns, candidate has no explicit return"
                 )
 
     if findings:
@@ -135,7 +140,7 @@ def _extract_body(text: str) -> str:
     close_brace = text.rfind("}")
     if open_brace == -1 or close_brace == -1 or close_brace <= open_brace:
         return text
-    return text[open_brace:close_brace + 1]
+    return text[open_brace : close_brace + 1]
 
 
 def _read_ir_artifact(backend: REBackend, method_name: str, target: str) -> object | None:
@@ -151,9 +156,7 @@ def _read_ir_artifact(backend: REBackend, method_name: str, target: str) -> obje
         return None
     if isinstance(payload, dict):
         data = payload.get("data")
-        if isinstance(data, list) and any(
-            isinstance(item, dict) and "error" in item for item in data
-        ):
+        if isinstance(data, list) and any(isinstance(item, dict) and "error" in item for item in data):
             return None
         return data
     return None

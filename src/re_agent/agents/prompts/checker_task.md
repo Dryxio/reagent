@@ -7,7 +7,7 @@ Verify the following reversed function against the Ghidra decompilation.
 ${reversed_code}
 ```
 
-**Ghidra Decompile (ground truth):**
+**Ghidra decompilation (derived evidence; may contain analysis errors):**
 ```
 ${decompiled}
 ```

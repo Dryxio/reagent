@@ -1,4 +1,5 @@
 """OpenAI-compatible LLM provider implementation."""
+
 from __future__ import annotations
 
 import uuid
@@ -33,9 +34,11 @@ class OpenAIProvider:
         model: str = "gpt-4o",
         max_tokens: int = 4096,
         temperature: float = 0.0,
+        timeout_s: int = 1800,
         base_url: str | None = None,
     ) -> None:
-        self._client = openai.OpenAI(api_key=api_key, base_url=base_url)
+        self._client = openai.OpenAI(api_key=api_key, base_url=base_url, timeout=timeout_s)
+        self.last_metadata: dict[str, Any] = {}
         self._model = model
         self._max_tokens = max_tokens
         self._temperature = temperature
@@ -45,9 +48,7 @@ class OpenAIProvider:
 
     def send(self, messages: list[Message], **kwargs: Any) -> str:
         """Send messages via the chat completions API and return the response."""
-        api_messages: list[dict[str, str]] = [
-            {"role": m.role, "content": m.content} for m in messages
-        ]
+        api_messages: list[dict[str, str]] = [{"role": m.role, "content": m.content} for m in messages]
 
         response = self._client.chat.completions.create(
             model=kwargs.get("model", self._model),
@@ -55,6 +56,9 @@ class OpenAIProvider:
             max_tokens=kwargs.get("max_tokens", self._max_tokens),
             temperature=kwargs.get("temperature", self._temperature),
         )
+
+        usage = getattr(response, "usage", None)
+        self.last_metadata = {"model": self._model, "usage": usage.model_dump() if usage is not None else {}}
 
         choice = response.choices[0]
         return choice.message.content or ""

@@ -67,6 +67,8 @@ parity:
 
 orchestrator:
   max_review_rounds: 4
+  max_llm_calls_per_function: 80
+  cumulative_validation: true
   max_functions_per_class: 10
   objective_verifier_enabled: true
   objective_call_count_tolerance: 3

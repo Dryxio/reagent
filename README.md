@@ -28,7 +28,7 @@ re-agent reverse --class CTrain
     ├── Candidate overlay
     │   └── configured build, test, and runtime gates
     ├── Candidate parity gate (GREEN | YELLOW | RED)
-    └── Reports, per-round logs, session history, and knowledge graph
+    └── Reports, per-call logs, round checkpoints, session history, and knowledge graph
 ```
 
 The tool generates candidate C/C++ implementations; it does not patch the
@@ -41,6 +41,23 @@ independent conditions:
 4. parity is not blocked by the configured RED/YELLOW policy.
 
 This is conservative verification, not a proof of semantic equivalence.
+
+## New in 0.3.0
+
+Build, test, runtime, differential and semantic-rule failures now return to the
+repair loop. Class validation can compose accepted functions in an isolated
+scratch project (`copy_project: true`, `cumulative_validation: true`).
+
+- `re-agent doctor --address ADDR` checks setup before model calls.
+- `re-agent benchmark --manifest cases.json --output result.json` compares JSON harnesses.
+- `backend.type: ghidra-json` reads structured exports directly using `backend.export_dir`
+  and an optional `backend.address_map`; it requires no bridge executable.
+- `project_profile.compilation_database` enables optional Clang AST indexing.
+- `orchestrator.max_llm_calls_per_function` bounds all reverser/checker calls together.
+- Sessions retain round diagnostics and archive completed state when fingerprinted inputs change.
+
+See [migration and configuration](docs/configuration.md), [release validation](docs/validation-0.3.md),
+[the GTA differential adapters](examples/gta_timer/README.md), and [the changelog](CHANGELOG.md).
 
 ## Requirements
 
@@ -59,13 +76,13 @@ This is conservative verification, not a proof of semantic equivalence.
 Install the agent and its Ghidra query bridge from PyPI:
 
 ```bash
-python3 -m pip install --upgrade "auto-re-agent[ghidra-bridge]>=0.2.0"
+python3 -m pip install --upgrade "auto-re-agent[ghidra-bridge]>=0.3.0"
 ```
 
 For headless Ghidra exports, install the bridge with its PyGhidra extra:
 
 ```bash
-python3 -m pip install --upgrade "auto-re-agent[headless]>=0.2.0"
+python3 -m pip install --upgrade "auto-re-agent[headless]>=0.3.0"
 ```
 
 To install the latest development versions directly from GitHub instead:
@@ -252,7 +269,7 @@ and strings. Unsupported bridge capabilities degrade gracefully.
 Generated code is written to an overlay. With `copy_project: true`, the project
 is copied to a temporary directory, the candidate replaces the matching body
 there, and commands run from that copy. `.git`, `.venv`, `build`, `reports`, and
-Python cache files are not copied. Temporary project copies are deleted unless
+Python cache files are not copied. Internal symlinks are remapped into the copy; external or broken links are rejected. Temporary project copies are deleted unless
 `keep_project_copy: true`.
 
 Commands may use:
@@ -276,11 +293,11 @@ with available decompile, assembly, CFG, and normalized high P-code evidence.
 It returns `FAIL` only for strong mismatches; insufficient evidence returns
 `UNKNOWN`.
 
-The reversal pipeline runs the 11 built-in heuristic parity signals against the
-generated candidate body. RED is blocking by default; YELLOW can be made
+The reversal pipeline runs the 11 built-in heuristic parity signals and configured
+semantic rules against the generated candidate body on every round. RED is blocking by default; YELLOW can be made
 blocking with `validation.parity_fail_on_yellow`.
 
-The standalone command is different: `re-agent parity` analyzes functions in
+The standalone command analyzes existing source: `re-agent parity` analyzes functions in
 the existing source tree. It also supports semantic-rule files and manual check
 overrides. Its process exit code remains zero on RED unless `--strict-exit` is
 used.
@@ -301,7 +318,7 @@ The 11 built-in signals are:
 | NaN logic | YELLOW | Decompile indicates NaN-sensitive behavior missing from source |
 | Inline wrapper | INFO | Source forwards to an internal implementation |
 
-The signal set is fixed in `0.2.0`; configuration exposes selected thresholds,
+The built-in signal set is fixed; configuration exposes selected thresholds,
 inline-wrapper behavior, semantic rules, and manual overrides rather than an
 individual toggle for every signal.
 
@@ -359,7 +376,7 @@ or project-specific validation commands.
 Default artifacts include:
 
 - `reports/re-agent/code/`: final generated code per function
-- `reports/re-agent/logs/`: per-round reverser/checker prompts, responses, and provider metadata
+- `reports/re-agent/logs/`: unique run directories with per-call prompts, responses, provider metadata and round results
 - `reports/re-agent/candidates/`: non-isolated candidate overlays
 - `reports/re-agent/knowledge-graph.json`: persistent evidence graph
 - `re-agent-progress.json`: current per-function state plus run history
@@ -428,8 +445,7 @@ cost depends on the selected models, evidence volume, and target complexity.
 - re-agent does not commit or push generated code;
 - candidate generation does not overwrite the original source tree;
 - review rounds, evidence actions, and per-function attempts are bounded;
-- prompt/response logs are written per review round, not for every internal
-  evidence-loop call;
+- prompt/response logs include internal evidence-loop calls in unique run directories;
 - configured validation commands execute through `/bin/sh` and should only be
   trusted when they are controlled by the project owner;
 - structural and parity checks catch useful mismatches but do not prove binary

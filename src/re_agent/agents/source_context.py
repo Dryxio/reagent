@@ -42,7 +42,7 @@ class SourceContextBuilder:
 
         recent = self._find_recent_generated_code(target)
         if recent:
-            sections.append("Recent verified reversals:\n" + "\n\n".join(recent))
+            sections.append("Recent accepted reversals (see validation status):\n" + "\n\n".join(recent))
 
         if not sections:
             return "No relevant existing source context found."
@@ -145,4 +145,5 @@ class SourceContextBuilder:
     @staticmethod
     def _code_filename(address: str, class_name: str, function_name: str) -> str:
         safe_name = f"{address}_{class_name}_{function_name}.cpp"
-        return safe_name.replace("::", "_").replace("/", "_")
+        from re_agent.verification.candidate import _sanitize_path_component
+        return _sanitize_path_component(safe_name)

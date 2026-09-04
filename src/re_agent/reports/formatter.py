@@ -1,4 +1,5 @@
 """Output formatters for re-agent results."""
+
 from __future__ import annotations
 
 import json
@@ -14,6 +15,8 @@ def format_result(result: ReversalResult, include_code: bool = True) -> str:
         f"{result.target.class_name}::{result.target.function_name} ({result.target.address})",
         f"  Status: {status} | Rounds: {result.rounds_used}",
     ]
+    if result.error:
+        lines.append(f"  Error: {result.error}")
     if result.checker_verdict:
         lines.append(f"  Verdict: {result.checker_verdict.verdict.value}")
         if result.checker_verdict.summary:
@@ -72,6 +75,8 @@ def results_to_markdown(results: list[ReversalResult]) -> str:
 def _result_to_dict(result: ReversalResult) -> dict[str, Any]:
     d: dict[str, Any] = {
         "address": result.target.address,
+        "run_id": result.run_id,
+        "error": result.error,
         "class_name": result.target.class_name,
         "function_name": result.target.function_name,
         "success": result.success,

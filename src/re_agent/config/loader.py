@@ -1,4 +1,5 @@
 """Configuration loader for re-agent."""
+
 from __future__ import annotations
 
 import dataclasses
@@ -37,8 +38,7 @@ def _load_yaml_file(path: Path) -> dict[str, Any]:
         import yaml  # type: ignore[import-untyped]
     except ImportError as err:
         raise ImportError(
-            "PyYAML is required for loading YAML config files. "
-            "Install it with: pip install pyyaml"
+            "PyYAML is required for loading YAML config files. Install it with: pip install pyyaml"
         ) from err
     text = path.read_text(encoding="utf-8")
     data = yaml.safe_load(text)
@@ -129,7 +129,9 @@ def _build_with_coercion(cls: type[_T], data: dict[str, Any]) -> _T:
         else:
             _log.warning(
                 "Unknown config key '%s' in %s (known: %s) — ignored",
-                k, cls.__name__, ", ".join(sorted(known)),
+                k,
+                cls.__name__,
+                ", ".join(sorted(known)),
             )
     return cls(**filtered)
 
@@ -232,4 +234,34 @@ def load_config(
         raw = _apply_cli_overrides(raw, cli_overrides)
 
     # 4. Build typed config from the merged dict.
-    return _build_config(raw)
+    config = _build_config(raw)
+    validate_config(config)
+    return config
+
+
+def validate_config(config: ReAgentConfig) -> None:
+    for name in (
+        "max_review_rounds",
+        "max_functions_per_class",
+        "max_attempts_per_function",
+        "max_llm_calls_per_function",
+    ):
+        value = getattr(config.orchestrator, name)
+        if type(value) is not int or value < 1:
+            raise ValueError(f"orchestrator.{name} must be a positive integer")
+    if type(config.orchestrator.max_investigations) is not int or config.orchestrator.max_investigations < 0:
+        raise ValueError("max_investigations must be a nonnegative integer")
+    if config.orchestrator.selection_strategy not in {"dependency-order", "easiest-first", "high-impact"}:
+        raise ValueError("Unknown selection_strategy")
+    for name in (
+        "build_commands",
+        "test_commands",
+        "runtime_commands",
+        "differential_reference",
+        "differential_candidate",
+    ):
+        value = getattr(config.validation, name)
+        if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+            raise ValueError(f"validation.{name} must be a list of strings")
+    if config.validation.command_timeout_s <= 0:
+        raise ValueError("validation.command_timeout_s must be positive")

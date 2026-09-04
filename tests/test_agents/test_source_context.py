@@ -100,6 +100,6 @@ void CTrain::UpdateTrainNodes() {
 
     assert "Class header:" in reverser.last_prompt
     assert "Sibling methods:" in reverser.last_prompt
-    assert "Recent verified reversals:" in reverser.last_prompt
+    assert "Recent accepted reversals (see validation status):" in reverser.last_prompt
     assert "m_fSpeed" in reverser.last_prompt
     assert "Shutdown" in reverser.last_prompt

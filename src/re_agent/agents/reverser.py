@@ -1,4 +1,5 @@
 """Reverser agent — gathers context and asks LLM to produce reversed C++ code."""
+
 from __future__ import annotations
 
 import json
@@ -13,6 +14,7 @@ from re_agent.core.models import FunctionTarget
 from re_agent.core.session import Session
 from re_agent.llm.protocol import LLMProvider, Message
 from re_agent.parity.source_indexer import SourceIndexer
+from re_agent.utils.evidence import bounded_evidence
 from re_agent.utils.templates import render_template
 
 PROMPTS_DIR = Path(__file__).parent / "prompts"
@@ -36,6 +38,7 @@ class ReverserAgent:
         max_investigations: int = 8,
     ) -> None:
         self.llm = llm
+        self._session = session
         self.backend = backend
         self._project_profile = project_profile
         self._source_context_builder: SourceContextBuilder | None = None
@@ -51,9 +54,7 @@ class ReverserAgent:
         self._history: list[Message] = []
         self._investigation_enabled = investigation_enabled
         self._max_investigations = max(0, max_investigations)
-        self._knowledge_graph = (
-            KnowledgeGraph(report_dir / "knowledge-graph.json") if report_dir is not None else None
-        )
+        self._knowledge_graph = KnowledgeGraph(report_dir / "knowledge-graph.json") if report_dir is not None else None
         self.last_prompt: str = ""
         self.last_response: str = ""
 
@@ -80,8 +81,7 @@ class ReverserAgent:
                 if struct:
                     structs_text = f"{struct.name} (size: {struct.size})\n"
                     structs_text += "\n".join(
-                        f"  +0x{f.offset:X} {f.type_str} {f.name} (size: {f.size})"
-                        for f in struct.fields
+                        f"  +0x{f.offset:X} {f.type_str} {f.name} (size: {f.size})" for f in struct.fields
                     )
             except Exception:
                 structs_text = "Unavailable"
@@ -105,6 +105,10 @@ class ReverserAgent:
             project_rules=self._project_rules(),
         )
 
+        if self._session is not None:
+            feedback = self._session.previous_feedback(target.address)
+            if feedback:
+                task_prompt += "\n\nPrevious attempt checkpoint (correct its failures):\n" + feedback
         if self._conversation_id is None and self.llm.supports_conversations:
             self._conversation_id = self.llm.new_conversation(system_prompt)
 
@@ -152,7 +156,7 @@ class ReverserAgent:
             if content:
                 if label == "Function evidence bundle" and self._knowledge_graph is not None:
                     self._knowledge_graph.ingest_context(str(content))
-                artifacts.append(f"## {label}\n{str(content)[:8000]}")
+                artifacts.append(f"## {label}\n{bounded_evidence(str(content), 8000)}")
 
         caps = self.backend.capabilities
         if getattr(caps, "has_context", False):
@@ -215,6 +219,9 @@ class ReverserAgent:
                 response = self.llm.send(history)
                 history.append(Message(role="assistant", content=response))
                 self._history = history
+        payload = self._extract_json(response)
+        if payload is not None and "actions" in payload:
+            raise RuntimeError("Investigation budget exhausted before a code candidate was produced")
         return response
 
     def _execute_action(self, tool: str, argument: str) -> str:
@@ -247,7 +254,7 @@ class ReverserAgent:
             rendered = str(value.raw_output)
         else:
             rendered = repr(value)
-        return f"TOOL {tool}({argument}):\n{rendered[:12000]}"
+        return f"TOOL {tool}({argument}):\n{bounded_evidence(rendered, 12000)}"
 
     def fix(
         self,
@@ -262,9 +269,7 @@ class ReverserAgent:
         all_fix_instructions = list(fix_instructions)
         if objective_findings:
             all_issues.extend(f"objective verifier: {finding}" for finding in objective_findings)
-            all_fix_instructions.extend(
-                "Resolve objective mismatch: " + finding for finding in objective_findings
-            )
+            all_fix_instructions.extend("Resolve objective mismatch: " + finding for finding in objective_findings)
         fix_prompt = render_template(
             PROMPTS_DIR / "fix_instructions.md",
             checker_report=checker_report,
@@ -295,6 +300,8 @@ class ReverserAgent:
     @staticmethod
     def _extract_code(response: str) -> str:
         payload = ReverserAgent._extract_json(response)
+        if payload is not None and ("actions" in payload or "blocked" in payload):
+            raise ValueError("Expected a code candidate, received an unresolved evidence request")
         if payload is not None and isinstance(payload.get("code"), str):
             return str(payload["code"]).strip()
         m = CODE_BLOCK_RE.search(response)

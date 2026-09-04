@@ -19,6 +19,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
+      - name: Verify release before publishing
+        run: |
+          python -m pip install -e ".[dev]"
+          ruff check src tests examples
+          mypy src
+          pytest -q
       - name: Build distributions
         run: |
           python -m pip install --upgrade build

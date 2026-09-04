@@ -1,4 +1,5 @@
 """Source code indexer for C++ function body extraction and analysis."""
+
 from __future__ import annotations
 
 import contextlib
@@ -41,13 +42,9 @@ class SourceIndexer:
         self._class_macro_re: re.Pattern[str] | None = None
         if profile and profile.class_macro:
             with contextlib.suppress(re.error):
-                self._class_macro_re = re.compile(
-                    rf"{re.escape(profile.class_macro)}\s*\(\s*(\w+)\s*\)"
-                )
+                self._class_macro_re = re.compile(rf"{re.escape(profile.class_macro)}\s*\(\s*(\w+)\s*\)")
 
-        self.source_files: list[Path] = sorted(
-            p for ext in extensions for p in source_root.rglob(f"*{ext}")
-        )
+        self.source_files: list[Path] = sorted(p for ext in extensions for p in source_root.rglob(f"*{ext}"))
         self.file_text_cache: dict[Path, str] = {}
         self.token_index: dict[tuple[str, str], list[tuple[Path, int]]] = defaultdict(list)
         # Maps address -> (class_name, fn_name) discovered via hook patterns
@@ -55,6 +52,17 @@ class SourceIndexer:
         self.lookup_cache: dict[tuple[str, str], SourceMatch | None] = {}
         self.free_lookup_cache: dict[str, SourceMatch | None] = {}
         self._build_index()
+        self.ast_definitions: dict[tuple[str, str], list[SourceMatch]] | None = None
+        if profile and profile.compilation_database:
+            from re_agent.parity.clang_index import definitions
+
+            self.ast_definitions = defaultdict(list)
+            for scope, name, path, declaration, start, end in definitions(
+                Path(profile.compilation_database), source_root
+            ):
+                self.ast_definitions[(scope, name)].append(
+                    self._make_source_match(path, self._read_text(path), declaration, start, end - 1)
+                )
 
     def _read_text(self, path: Path) -> str:
         txt = self.file_text_cache.get(path)
@@ -206,7 +214,7 @@ class SourceIndexer:
         if not inner:
             return False
         if inner.startswith("return "):
-            inner = inner[len("return "):].strip()
+            inner = inner[len("return ") :].strip()
         if not inner.endswith(";"):
             return False
         inner = inner[:-1].strip()
@@ -228,20 +236,17 @@ class SourceIndexer:
             return False
         callee_base = callee
         if callee_base.startswith("this->"):
-            callee_base = callee_base[len("this->"):]
+            callee_base = callee_base[len("this->") :]
         if "::" in callee_base:
             callee_base = callee_base.split("::")[-1]
         if "<" in callee_base:
             callee_base = callee_base.split("<", 1)[0]
         return callee_base.startswith("I_") or (
-            "<" in callee
-            and len(callee_base) > 1
-            and callee_base.startswith("I")
-            and callee_base[1].isupper()
+            "<" in callee and len(callee_base) > 1 and callee_base.startswith("I") and callee_base[1].isupper()
         )
 
     def _make_source_match(self, path: Path, txt: str, idx: int, open_brace: int, close_brace: int) -> SourceMatch:
-        body = txt[open_brace:close_brace + 1]
+        body = txt[open_brace : close_brace + 1]
         return self.analyze_body(str(path), txt.count("\n", 0, idx) + 1, body, open_brace, close_brace + 1)
 
     def analyze_body(
@@ -429,6 +434,9 @@ class SourceIndexer:
         return None
 
     def find(self, class_name: str, fn_name: str) -> SourceMatch | None:
+        if self.ast_definitions is not None:
+            matches = self.ast_definitions.get((class_name, fn_name), [])
+            return matches[0] if len(matches) == 1 else None
         if not fn_name and not class_name:
             return None
         key = (class_name, fn_name)
@@ -451,7 +459,7 @@ class SourceIndexer:
                 sm = self._make_source_match(path, txt, idx, open_brace, close_brace)
                 self.lookup_cache[key] = sm
                 return sm
-        free = self._find_free_function(fn_name)
+        free = self._find_free_function(fn_name) if not class_name else None
         if free is not None:
             self.lookup_cache[key] = free
             return free
@@ -460,8 +468,23 @@ class SourceIndexer:
 
     def find_all(self, class_name: str, fn_name: str) -> list[SourceMatch]:
         """Return every matching definition so overloads can be handled conservatively."""
-        if not class_name or not fn_name:
+        if self.ast_definitions is not None:
+            return list(self.ast_definitions.get((class_name, fn_name), []))
+        if not fn_name:
             return []
+        if not class_name:
+            free_matches = []
+            pattern = re.compile(rf"(?<!::)\b{re.escape(fn_name)}\s*\(")
+            for path in self.source_files:
+                txt = self._read_text(path)
+                for match in pattern.finditer(txt):
+                    opening = self._is_free_function_definition(txt, match.start(), fn_name)
+                    if opening is None:
+                        continue
+                    closing = self._find_matching_brace(txt, opening)
+                    if closing is not None:
+                        free_matches.append(self._make_source_match(path, txt, match.start(), opening, closing))
+            return free_matches
         matches: list[SourceMatch] = []
         seen: set[tuple[Path, int]] = set()
         for candidate_key in self._candidate_keys(class_name, fn_name):

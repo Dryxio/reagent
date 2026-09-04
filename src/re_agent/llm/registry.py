@@ -1,4 +1,5 @@
 """LLM provider factory registry."""
+
 from __future__ import annotations
 
 from re_agent.config.schema import LLMConfig
@@ -26,6 +27,7 @@ def create_provider(config: LLMConfig) -> LLMProvider:
             model=config.model,
             max_tokens=config.max_tokens,
             temperature=config.temperature,
+            timeout_s=config.timeout_s,
         )
 
     if config.provider == "claude-cli":
@@ -47,6 +49,7 @@ def create_provider(config: LLMConfig) -> LLMProvider:
             model=config.model,
             max_tokens=config.max_tokens,
             temperature=config.temperature,
+            timeout_s=config.timeout_s,
             base_url=config.base_url,
         )
 
@@ -55,6 +58,7 @@ def create_provider(config: LLMConfig) -> LLMProvider:
 
         return CodexCLIProvider(
             model=config.model or "gpt-5.4",
+            codex_bin=config.cli_path or "codex",
             timeout_s=config.timeout_s,
         )
 

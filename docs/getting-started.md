@@ -3,7 +3,7 @@
 Install `auto-re-agent` and the Ghidra bridge from PyPI:
 
 ```bash
-python3 -m pip install --upgrade "auto-re-agent[headless]>=0.2.0"
+python3 -m pip install --upgrade "auto-re-agent[headless]>=0.3.0"
 ```
 
 ## Prepare Ghidra

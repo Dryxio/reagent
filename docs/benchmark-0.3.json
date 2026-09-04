@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "results": [
+    {
+      "name": "GetCyclesPerMillisecond",
+      "matched": true,
+      "expected_match": true,
+      "cases_run": 7,
+      "findings": [
+        "All 7 differential cases matched"
+      ],
+      "duration_s": 1.804505749954842
+    },
+    {
+      "name": "GetCyclesPerMillisecond negative control",
+      "matched": false,
+      "expected_match": false,
+      "cases_run": 2,
+      "findings": [
+        "{\"candidate\": 0, \"case\": 1, \"reference\": 1}"
+      ],
+      "duration_s": 0.5459381669061258
+    },
+    {
+      "name": "StartUserPause",
+      "matched": true,
+      "expected_match": true,
+      "cases_run": 7,
+      "findings": [
+        "All 7 differential cases matched"
+      ],
+      "duration_s": 1.483093083021231
+    },
+    {
+      "name": "StartUserPause negative control",
+      "matched": false,
+      "expected_match": false,
+      "cases_run": 1,
+      "findings": [
+        "{\"candidate\": 0, \"case\": 0, \"reference\": 1}"
+      ],
+      "duration_s": 0.21955766703467816
+    },
+    {
+      "name": "EndUserPause",
+      "matched": true,
+      "expected_match": true,
+      "cases_run": 7,
+      "findings": [
+        "All 7 differential cases matched"
+      ],
+      "duration_s": 1.508510792045854
+    },
+    {
+      "name": "EndUserPause negative control",
+      "matched": false,
+      "expected_match": false,
+      "cases_run": 1,
+      "findings": [
+        "{\"candidate\": 1, \"case\": 0, \"reference\": 0}"
+      ],
+      "duration_s": 0.26725741697009653
+    }
+  ],
+  "total": 6,
+  "expectations_met": 6
+}

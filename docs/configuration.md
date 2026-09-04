@@ -149,3 +149,73 @@ inspecting their text. They therefore produce `UNKNOWN` until
 `trust_configured_commands: true` explicitly attests that the configured
 project commands compile/test the candidate. The non-isolated placeholder
 check is an additional mistake detector, not a semantic proof.
+
+
+## Version 0.3 options and migration
+
+`orchestrator.max_llm_calls_per_function` (default 80) is a shared cap across all
+reverser and checker calls, including investigation responses. Each review round
+can use up to `max_investigations` evidence actions. `estimate` reports that bound;
+token counts remain planning estimates, not provider guarantees.
+
+`orchestrator.cumulative_validation` defaults to true and takes effect with
+`validation.copy_project: true`. Successful candidates are promoted only into the
+scratch project so later candidates validate against them. Source files in the
+original project remain unchanged.
+
+For structured exports, select:
+
+```yaml
+backend:
+  type: ghidra-json
+  export_dir: /path/to/ghidra-exports
+  address_map: /path/to/address-map.json # optional
+project_profile:
+  compilation_database: /path/to/compile_commands.json # optional, requires clang++
+```
+
+The JSON backend reads bridge export objects directly (schema 1, including legacy
+unversioned exports). Missing required function data and unsupported versions fail
+explicitly. Class enumeration includes matching exported functions and has no
+50-item display limit; session state filters accepted functions. Provide an address
+map to associate unnamed `FUN_*` exports with source symbols.
+
+Clang indexing uses translation unit compile flags and byte-correct body ranges.
+Overloads without a unique identity, macro-expanded bodies and compiler errors are
+rejected. The default lightweight indexer is still available without Clang.
+
+Differential harness commands use argument arrays, without shell expansion. Each
+harness reads one JSON value from stdin and emits one JSON value describing the
+observed behavior. Include return values, modified memory and relevant effects in
+that result. Comparison is exact; normalize address-dependent values or floating
+point representations in the project-owned adapters when appropriate.
+
+```yaml
+validation:
+  differential_reference: [/path/to/reference-harness]
+  differential_candidate: ['{overlay_root}/candidate-harness']
+  differential_cases_file: /path/to/cases.json
+  trust_configured_commands: true
+```
+
+The cases file must be a nonempty JSON array. Timeouts, invalid JSON, nonzero exits
+and mismatches fail the gate and are fed back to the reverser. A matching harness
+only establishes agreement on its declared observables and supplied cases.
+
+A benchmark manifest is a JSON array of objects with `name`, `reference`,
+`candidate`, and `cases`. Optional `expected_match: false` marks a negative control;
+`timeout_s` defaults to 30. The command fails when an expectation is not met.
+
+CLI reversal now honors `output.format` (json, markdown or text), defaults to JSON,
+and validates the acceptance configuration before model calls. Standalone parity
+continues to support human overrides; candidate validation never inherits those
+manual overrides. Session corruption raises an error without replacing the file.
+Changes to fingerprinted inputs archive previous results; use a separate session
+file for independent experiments. Round checkpoints seed subsequent attempts with
+previous code and diagnostics; provider-side conversations are not resumed across
+process restarts.
+
+Shell gates require POSIX `/bin/sh`. Placeholders are expanded as environment data,
+including in single/double quotes. Isolated working directories cannot escape the
+copy. Copies are not OS sandboxes: trusted project commands can still explicitly
+access external paths. Internal links are remapped; external/broken links fail.

@@ -1,4 +1,5 @@
 """Configuration schema dataclasses for re-agent."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -8,31 +9,44 @@ from dataclasses import dataclass, field
 class ProjectProfile:
     """Project-specific patterns and paths."""
 
-    hook_patterns: list[str] = field(default_factory=lambda: [
-        r"RH_ScopedInstall\s*\(\s*(\w+)\s*,\s*(0x[0-9A-Fa-f]+)",
-        r"RH_ScopedVirtualInstall\s*\(\s*(\w+)\s*,\s*(0x[0-9A-Fa-f]+)",
-    ])
-    stub_patterns: list[str] = field(default_factory=lambda: [
-        r"plugin::Call",
-    ])
-    stub_markers: list[str] = field(default_factory=lambda: [
-        "NOTSA_UNREACHABLE",
-    ])
+    hook_patterns: list[str] = field(
+        default_factory=lambda: [
+            r"RH_ScopedInstall\s*\(\s*(\w+)\s*,\s*(0x[0-9A-Fa-f]+)",
+            r"RH_ScopedVirtualInstall\s*\(\s*(\w+)\s*,\s*(0x[0-9A-Fa-f]+)",
+        ]
+    )
+    stub_patterns: list[str] = field(
+        default_factory=lambda: [
+            r"plugin::Call",
+        ]
+    )
+    stub_markers: list[str] = field(
+        default_factory=lambda: [
+            "NOTSA_UNREACHABLE",
+        ]
+    )
     stub_call_prefix: str = "plugin::Call"
     class_macro: str = "RH_ScopedClass"
     source_root: str = "source/game_sa"
-    source_extensions: list[str] = field(default_factory=lambda: [
-        ".cpp", ".h", ".hpp",
-    ])
+    compilation_database: str | None = None
+    source_extensions: list[str] = field(
+        default_factory=lambda: [
+            ".cpp",
+            ".h",
+            ".hpp",
+        ]
+    )
     hooks_csv: str | None = "docs/hooks.csv"
     name: str = "gta-reversed"
     language_standard: str = "C++23"
-    prompt_rules: list[str] = field(default_factory=lambda: [
-        "Use real member names from the existing project and reference headers",
-        "Never call virtual methods on this inside hook implementations",
-        "Use matrix.TransformVector(vec) instead of deprecated Multiply3x3",
-        "Verify struct offsets against project VALIDATE_OFFSET checks",
-    ])
+    prompt_rules: list[str] = field(
+        default_factory=lambda: [
+            "Use real member names from the existing project and reference headers",
+            "Never call virtual methods on this inside hook implementations",
+            "Use matrix.TransformVector(vec) instead of deprecated Multiply3x3",
+            "Verify struct offsets against project VALIDATE_OFFSET checks",
+        ]
+    )
 
 
 @dataclass
@@ -70,6 +84,8 @@ class BackendConfig:
     """Decompiler backend configuration."""
 
     type: str = "ghidra-bridge"
+    export_dir: str | None = None
+    address_map: str | None = None
     cli_path: str = "ghidra-bridge"
     timeout_s: int = 45
 
@@ -91,6 +107,8 @@ class OrchestratorConfig:
     """Orchestrator loop settings."""
 
     max_review_rounds: int = 4
+    max_llm_calls_per_function: int = 80
+    cumulative_validation: bool = True
     max_functions_per_class: int = 10
     objective_verifier_enabled: bool = True
     objective_call_count_tolerance: int = 3
@@ -111,6 +129,9 @@ class ValidationConfig:
     build_commands: list[str] = field(default_factory=list)
     test_commands: list[str] = field(default_factory=list)
     runtime_commands: list[str] = field(default_factory=list)
+    differential_reference: list[str] = field(default_factory=list)
+    differential_candidate: list[str] = field(default_factory=list)
+    differential_cases_file: str | None = None
     require_build: bool = False
     require_tests: bool = False
     require_runtime: bool = False

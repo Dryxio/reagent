@@ -6,6 +6,8 @@ from pathlib import Path
 from typing import Any
 
 from re_agent.utils.address import normalize_address
+from re_agent.utils.evidence import bounded_evidence
+from re_agent.utils.storage import atomic_json
 
 
 class KnowledgeGraph:
@@ -66,14 +68,12 @@ class KnowledgeGraph:
             "nodes": {node_id: self.nodes[node_id] for node_id in node_ids if node_id in self.nodes},
             "edges": related,
         }
-        return json.dumps(payload, indent=2)[:max_chars]
+        return bounded_evidence(json.dumps(payload, indent=2), max_chars)
 
     def save(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = self.path.with_suffix(".tmp")
         payload = {"schema_version": 1, "nodes": self.nodes, "edges": self.edges}
-        tmp.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-        tmp.replace(self.path)
+        atomic_json(self.path, payload)
 
     def _put(self, kind: str, identity: str, data: dict[str, Any]) -> str:
         node_id = f"{kind}:{identity}"

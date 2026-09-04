@@ -1,4 +1,5 @@
 """CLI entry point for re-agent."""
+
 from __future__ import annotations
 
 import argparse
@@ -9,10 +10,16 @@ def build_parser() -> argparse.ArgumentParser:
         prog="re-agent",
         description="Autonomous reverse engineering agent",
     )
-    parser.add_argument("--version", action="version", version="%(prog)s 0.2.1")
+    parser.add_argument("--version", action="version", version="%(prog)s 0.3.0")
     parser.add_argument("--config", default="re-agent.yaml", help="Config file path")
 
     sub = parser.add_subparsers(dest="command", help="Available commands")
+
+    doctor_p = sub.add_parser("doctor", help="Check configuration and exported evidence without LLM calls")
+    doctor_p.add_argument("--address", help="Check evidence for one function")
+    benchmark_p = sub.add_parser("benchmark", help="Run a differential harness manifest")
+    benchmark_p.add_argument("--manifest", required=True)
+    benchmark_p.add_argument("--output")
 
     # init
     init_p = sub.add_parser("init", help="Initialize re-agent.yaml config file")
@@ -50,7 +57,7 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main(argv: list[str] | None = None) -> int:
+def _main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
 
@@ -58,25 +65,49 @@ def main(argv: list[str] | None = None) -> int:
         parser.print_help()
         return 0
 
+    if args.command == "doctor":
+        from re_agent.cli.cmd_doctor import cmd_doctor
+
+        return cmd_doctor(args)
+    if args.command == "benchmark":
+        from re_agent.cli.cmd_benchmark import cmd_benchmark
+
+        return cmd_benchmark(args)
+
     if args.command == "init":
         from re_agent.cli.cmd_init import cmd_init
+
         return cmd_init(args)
 
     if args.command == "reverse":
         from re_agent.cli.cmd_reverse import cmd_reverse
+
         return cmd_reverse(args)
 
     if args.command == "parity":
         from re_agent.cli.cmd_parity import cmd_parity
+
         return cmd_parity(args)
 
     if args.command == "status":
         from re_agent.cli.cmd_status import cmd_status
+
         return cmd_status(args)
 
     if args.command == "estimate":
         from re_agent.cli.cmd_estimate import cmd_estimate
+
         return cmd_estimate(args)
 
     parser.print_help()
     return 1
+
+
+def main(argv: list[str] | None = None) -> int:
+    try:
+        return _main(argv)
+    except (ValueError, RuntimeError, OSError) as exc:
+        import sys
+
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1

@@ -1,4 +1,5 @@
 """Checker agent — verifies reversed code against Ghidra decompilation."""
+
 from __future__ import annotations
 
 import json
@@ -42,6 +43,17 @@ class CheckerAgent:
             decompiled=decompiled,
         )
 
+        from re_agent.agents.reverser import ReverserAgent
+
+        evidence = ReverserAgent(self.llm, self.backend, max_investigations=4)._build_investigation_context(target)
+        if evidence:
+            task_prompt += "\n\nIndependent binary evidence (resolve conflicts explicitly):\n" + evidence
+        try:
+            struct = self.backend.get_struct(target.class_name) if target.class_name else None
+        except (RuntimeError, OSError, ValueError):
+            struct = None
+        if struct:
+            task_prompt += "\n\nType layout: " + repr(struct)
         self.last_prompt = task_prompt
 
         if self._conversation_id is None and self.llm.supports_conversations:

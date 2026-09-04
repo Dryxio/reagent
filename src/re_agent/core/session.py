@@ -1,13 +1,17 @@
 """JSON-backed persistent session state for tracking reversal progress."""
+
 from __future__ import annotations
 
+import hashlib
 import json
 import time
+from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
 from re_agent.core.models import ReversalResult
 from re_agent.utils.address import normalize_address
+from re_agent.utils.storage import atomic_json, file_lock
 
 
 class Session:
@@ -20,35 +24,70 @@ class Session:
             self.load()
 
     def load(self) -> None:
-        try:
-            self._data = json.loads(self.path.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError):
-            self._data = {"functions": {}, "runs": []}
+        data = json.loads(self.path.read_text(encoding="utf-8"))
+        if (
+            not isinstance(data, dict)
+            or not isinstance(data.get("functions"), dict)
+            or not isinstance(data.get("runs"), list)
+        ):
+            raise ValueError(f"Invalid session schema: {self.path}; preserve and repair this file")
+        self._data = data
 
     def save(self) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = self.path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(self._data, indent=2), encoding="utf-8")
-        tmp.rename(self.path)
+        atomic_json(self.path, self._data)
+
+    def bind(self, identity: str) -> None:
+        """Archive old results when the project/evidence/acceptance policy changes."""
+        with file_lock(self.path):
+            if self.path.exists():
+                self.load()
+            previous = self._data.get("identity")
+            if previous != identity and (self._data["functions"] or self._data.get("checkpoints")):
+                history = self._data.get("history", [])
+                history.append({k: v for k, v in self._data.items() if k != "history"})
+                self._data = {"functions": {}, "runs": [], "history": history}
+            self._data["identity"] = identity
+            self.save()
+
+    def record_checkpoint(self, result: ReversalResult) -> None:
+        from re_agent.reports.formatter import _result_to_dict
+
+        with file_lock(self.path):
+            if self.path.exists():
+                self.load()
+            self._data.setdefault("checkpoints", {})[normalize_address(result.target.address)] = _result_to_dict(result)
+            self.save()
+
+    def previous_feedback(self, address: str) -> str:
+        entry = self._data.get("checkpoints", {}).get(normalize_address(address))
+        return json.dumps(entry, indent=2) if entry else ""
 
     def record_result(self, result: ReversalResult) -> None:
         addr = normalize_address(result.target.address)
         entry = {
             "address": result.target.address,
+            "run_id": result.run_id,
+            "error": result.error,
+            "code_sha256": hashlib.sha256(result.code.encode()).hexdigest(),
+            "code": result.code,
+            "objective_findings": result.objective_verdict.findings if result.objective_verdict else [],
+            "validation_findings": result.validation_verdict.findings if result.validation_verdict else [],
+            "parity_findings": [asdict(f) for f in result.parity_findings],
             "class_name": result.target.class_name,
             "function_name": result.target.function_name,
             "success": result.success,
             "rounds_used": result.rounds_used,
             "verdict": result.checker_verdict.verdict.value if result.checker_verdict else None,
-            "validation_verdict": (
-                result.validation_verdict.verdict.value if result.validation_verdict else None
-            ),
+            "validation_verdict": (result.validation_verdict.verdict.value if result.validation_verdict else None),
             "parity_status": result.parity_status.value if result.parity_status else None,
             "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
         }
-        self._data["functions"][addr] = entry
-        self._data["runs"].append(entry)
-        self.save()
+        with file_lock(self.path):
+            if self.path.exists():
+                self.load()
+            self._data["functions"][addr] = entry
+            self._data["runs"].append(entry)
+            self.save()
 
     def is_completed(self, address: str) -> bool:
         addr = normalize_address(address)
@@ -64,9 +103,7 @@ class Session:
         """Return the number of recorded runs for an address."""
         addr = normalize_address(address)
         return sum(
-            1
-            for entry in self._data.get("runs", [])
-            if normalize_address(str(entry.get("address", ""))) == addr
+            1 for entry in self._data.get("runs", []) if normalize_address(str(entry.get("address", ""))) == addr
         )
 
     def get_class_summary(self, class_name: str) -> dict[str, int]:

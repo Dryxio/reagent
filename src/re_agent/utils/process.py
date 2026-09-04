@@ -1,4 +1,5 @@
 """Subprocess execution utilities."""
+
 from __future__ import annotations
 
 import subprocess
@@ -32,9 +33,7 @@ def run_cmd(args: Sequence[str], timeout_s: int = 45) -> tuple[bool, str]:
         return False, f"Command not found: {args[0]}"
 
 
-def run_cmd_split(
-    args: Sequence[str], timeout_s: int = 45
-) -> tuple[int, str, str]:
+def run_cmd_split(args: Sequence[str], timeout_s: int = 45) -> tuple[int, str, str]:
     """Run a command and return ``(returncode, stdout, stderr)`` separately.
 
     Unlike :func:`run_cmd`, this keeps stdout and stderr in separate streams
@@ -55,3 +54,53 @@ def run_cmd_split(
         return -1, "", f"TIMEOUT after {timeout_s}s: {e}"
     except FileNotFoundError:
         return -1, "", f"Command not found: {args[0]}"
+
+
+def run_process(
+    args: Sequence[str],
+    *,
+    cwd: str | None = None,
+    env: dict[str, str] | None = None,
+    input_text: str | None = None,
+    timeout_s: float = 45,
+    max_output_bytes: int = 1_048_576,
+) -> subprocess.CompletedProcess[str]:
+    """Bound captured output and terminate the entire process group on timeout."""
+    import contextlib
+    import os
+    import signal
+    import tempfile
+
+    with tempfile.TemporaryFile() as stdout, tempfile.TemporaryFile() as stderr:
+        proc = subprocess.Popen(
+            list(args),
+            cwd=cwd,
+            env=env,
+            stdin=subprocess.PIPE,
+            stdout=stdout,
+            stderr=stderr,
+            text=True,
+            start_new_session=os.name != "nt",
+        )
+        try:
+            proc.communicate(input_text, timeout=timeout_s)
+        except BaseException:
+            if os.name == "nt":
+                subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"], capture_output=True, check=False)
+            else:
+                with contextlib.suppress(ProcessLookupError):
+                    os.killpg(proc.pid, signal.SIGKILL)
+            proc.wait()
+            raise
+
+        def read_tail(handle: object) -> str:
+            # Temporary files bound memory even when a build emits a large log.
+            import typing
+
+            stream = typing.cast(typing.BinaryIO, handle)
+            size = stream.seek(0, 2)
+            stream.seek(max(0, size - max_output_bytes))
+            text = stream.read().decode("utf-8", errors="replace")
+            return ("[output truncated]\n" if size > max_output_bytes else "") + text
+
+        return subprocess.CompletedProcess(list(args), proc.returncode, read_tail(stdout), read_tail(stderr))
