@@ -93,7 +93,7 @@ class Monitor:
                 )
             atomic_json(self.record, {"pid": self.process.pid, "created": self.process.create_time(),
                                       "command": self.worker, "process_command": self.process.cmdline(),
-                                      "cwd": str(self.work_dir)})
+                                      "cwd": str(self.work_dir), "phase": "running"})
             return {"message": "Worker started", "pid": self.process.pid}
 
     def stop(self) -> dict[str, str]:
@@ -117,6 +117,9 @@ class Monitor:
                     with contextlib.suppress(ProcessLookupError):
                         os.killpg(self.process.pid, signal.SIGKILL)
                 self.process.wait(timeout=20)
+                saved = read_json(self.record)
+                saved.update(phase="stopped", stopped_at=time.time())
+                atomic_json(self.record, saved)
             return {"message": "Worker stopped; saved results retained"}
 
     def snapshot(self) -> dict[str, Any]:
@@ -157,8 +160,17 @@ class Monitor:
                         tail = stream.read().decode("utf-8", errors="replace")
             except OSError:
                 pass
-            return {"active": self.active(), "controls": bool(self.worker),
-                    "phase": "running" if self.active() else "idle" if self.worker else "read-only",
+            self._adopt()
+            active = self.active()
+            saved = read_json(self.record)
+            matching = saved.get("command") == self.worker and saved.get("cwd") == str(self.work_dir)
+            phase = "idle" if self.worker else "read-only"
+            if active:
+                phase = "running"
+            elif self.worker and matching:
+                phase = "stopped" if saved.get("phase") == "stopped" else "exited"
+            return {"active": active, "controls": bool(self.worker),
+                    "phase": phase,
                     "targets": self.total, "completed": len(recent), "passed": passed,
                     "failed": len(recent) - passed, "rounds": rounds, "recent": recent[:18], "log": tail,
                     "updated": time.strftime("%H:%M:%S"), "output": str(self.work_dir)}

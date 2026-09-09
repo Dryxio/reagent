@@ -87,12 +87,15 @@ def test_worker_tree_stop_duplicate_start_and_host_reconnect(tmp_path):
         second.stop()
         assert not second.active()
         assert not first.active()
+        assert first.snapshot()["phase"] == "stopped"
+        assert Monitor(tmp_path, tmp_path / "state", [], worker=command).snapshot()["phase"] == "stopped"
         deadline = time.monotonic() + 5
         while child.is_running() and child.status() != psutil.STATUS_ZOMBIE and time.monotonic() < deadline:
             time.sleep(.02)
         assert not child.is_running() or child.status() == psutil.STATUS_ZOMBIE
         first.start()
         assert first.active()
+        assert second.snapshot()["phase"] == "running"
         first.stop()
     finally:
         first.stop()
@@ -114,6 +117,17 @@ def test_stale_identity_and_unrelated_process_are_not_adopted(tmp_path):
     record.update(created=0, command=current.cmdline())
     (state / "worker.json").write_text(json.dumps(record))
     assert not Monitor(tmp_path, state, [], worker=current.cmdline()).active()
+
+
+def test_natural_exit_is_distinct_from_explicit_stop(tmp_path):
+    command = [sys.executable, "-c", "import time; time.sleep(.2)"]
+    monitor = Monitor(tmp_path, tmp_path / "state", [], worker=command)
+    assert monitor.snapshot()["phase"] == "idle"
+    monitor.start()
+    monitor.process.wait(timeout=10)
+    assert monitor.snapshot()["phase"] == "exited"
+    monitor.stop()
+    assert Monitor(tmp_path, tmp_path / "state", [], worker=command).snapshot()["phase"] == "exited"
 
 
 @pytest.fixture
