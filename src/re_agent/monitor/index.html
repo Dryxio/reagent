@@ -268,6 +268,12 @@
           Saved source remains separate from accepted implementations.
         </p>
       </div>
+      <section class="panel" id="parallel" hidden>
+        <h2>Function workers</h2>
+        <p id="queue"></p>
+        <table><thead><tr><th>Address</th><th>Stage</th><th>Calls</th><th>Elapsed</th></tr></thead>
+          <tbody id="jobs"></tbody></table>
+      </section>
       <div class="grid">
         <section class="panel">
           <h2>Recent results</h2>
@@ -276,6 +282,7 @@
               <tr>
                 <th>Address</th>
                 <th>Outcome</th>
+                <th>Validation</th>
                 <th>Rounds</th>
               </tr>
             </thead>
@@ -341,6 +348,7 @@
             for (let v of [
               row.address,
               row.success ? "Review passed" : "Needs attention",
+              row.validation_verdict || "Not recorded",
               row.rounds_used || 0,
             ]) {
               let td = document.createElement("td");
@@ -350,6 +358,25 @@
             tr.children[1].className = row.success ? "green" : "amber";
             el("results").append(tr);
           }
+          const runs = s.executions || [];
+          el("parallel").hidden = !runs.length;
+          el("queue").textContent = runs.map(run =>
+            `${run.phase} · ${run.limit} worker limit · ${run.queued || 0} queued`
+          ).join(" / ");
+          el("jobs").replaceChildren();
+          for (const run of runs) for (const job of run.jobs || []) {
+            if (!["running", "proposed", "interrupted"].includes(job.state)) continue;
+            const tr = document.createElement("tr");
+            const end = job.finished || (run.alive ? Date.now() / 1000 : run.updated);
+            for (const value of [job.address, job.state === "running" ? job.stage || "starting" : job.state,
+                                 job.calls || 0, `${Math.max(0, Math.floor(end - job.started))}s`]) {
+              const td = document.createElement("td");
+              td.textContent = value;
+              tr.append(td);
+            }
+            el("jobs").append(tr);
+          }
+          el("stop").textContent = s.phase === "stopping" ? "Force stop" : "Stop run";
           el("start").disabled = busy || s.active || !s.controls;
           el("stop").disabled = busy || !s.active || !s.controls;
           el("connection").textContent =

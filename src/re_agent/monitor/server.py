@@ -102,12 +102,50 @@ class Monitor:
                                       "cwd": str(self.work_dir), "phase": "running"})
             return {"message": "Worker started", "pid": self.process.pid}
 
+    def executions(self) -> list[tuple[Path, dict[str, Any]]]:
+        """Read adjacent status files, verifying PID birth time before displaying activity."""
+        import psutil
+
+        paths = {p for pattern in self.session_globs
+                 for p in self.work_dir.glob(pattern + ".execution.json") if p.is_file()}
+        result = []
+        for path in sorted(paths):
+            data = read_json(path)
+            if data.get("schema_version") != 1:
+                continue
+            alive = False
+            try:
+                process = psutil.Process(data["pid"])
+                alive = process.create_time() == data["created"] and process.status() != psutil.STATUS_ZOMBIE
+            except (psutil.Error, KeyError, TypeError):
+                pass
+            if not alive and data.get("phase") in {"running", "stopping"}:
+                data["phase"] = "interrupted"
+                for job in data.get("jobs", []):
+                    if job.get("state") in {"running", "proposed"}:
+                        job.update(state="interrupted", stage="interrupted")
+            data["alive"] = alive
+            result.append((path, data))
+        return result
+
     def stop(self) -> dict[str, str]:
         if not self.worker:
             raise ValueError("Read-only monitor: no worker command configured")
         with self.lock, file_lock(self.record):
             self._adopt()
             if self.active():
+                descendants = self.process.children(recursive=True)
+                owned = {self.process.pid, *(child.pid for child in descendants)}
+                executions = [(path, data) for path, data in self.executions()
+                              if data.get("alive") and data.get("pid") in owned
+                              and data.get("phase") in {"running", "stopping"}]
+                saved = read_json(self.record)
+                if executions and saved.get("phase") != "stopping":
+                    for path, _data in executions:
+                        path.with_suffix(".stop").touch()
+                    saved.update(phase="stopping", stop_requested_at=time.time())
+                    atomic_json(self.record, saved)
+                    return {"message": "Stop requested; waiting for requests and cleanup. Stop again to force."}
                 if os.name == "nt":
                     subprocess.run(["taskkill", "/PID", str(self.process.pid), "/T", "/F"],
                                    capture_output=True, timeout=20, check=True)
@@ -122,6 +160,10 @@ class Monitor:
                     # Descendants can ignore SIGTERM even when the parent exits.
                     with contextlib.suppress(ProcessLookupError):
                         os.killpg(self.process.pid, signal.SIGKILL)
+                for child in reversed(descendants):
+                    with contextlib.suppress(self.psutil.Error):
+                        child.kill()
+                self.psutil.wait_procs(descendants, timeout=5)
                 self.process.wait(timeout=20)
                 saved = read_json(self.record)
                 saved.update(phase="stopped", stopped_at=time.time())
@@ -143,7 +185,8 @@ class Monitor:
                     data = read_json(path).get("functions")
                     if isinstance(data, dict):
                         rows = [{key: row.get(key) for key in
-                                 ("address", "function_name", "success", "rounds_used", "timestamp")}
+                                 ("address", "function_name", "success", "rounds_used", "timestamp",
+                                  "verdict", "validation_verdict")}
                                 for row in data.values()
                                 if isinstance(row, dict) and isinstance(row.get("address"), str)]
                         self.cache[path] = (stamp, rows)
@@ -172,11 +215,11 @@ class Monitor:
             matching = saved.get("command") == self.worker and saved.get("cwd") == str(self.work_dir)
             phase = "idle" if self.worker else "read-only"
             if active:
-                phase = "running"
+                phase = "stopping" if saved.get("phase") == "stopping" else "running"
             elif self.worker and matching:
-                phase = "stopped" if saved.get("phase") == "stopped" else "exited"
+                phase = "stopped" if saved.get("phase") in {"stopped", "stopping"} else "exited"
             return {"active": active, "controls": bool(self.worker),
-                    "phase": phase,
+                    "phase": phase, "executions": [data for _, data in self.executions()],
                     "targets": self.total, "completed": len(recent), "passed": passed,
                     "failed": len(recent) - passed, "rounds": rounds, "recent": recent[:18], "log": tail,
                     "updated": time.strftime("%H:%M:%S"), "output": str(self.work_dir)}

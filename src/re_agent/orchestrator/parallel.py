@@ -309,7 +309,11 @@ def _run(targets: list[FunctionTarget], config: ReAgentConfig, backend: REBacken
     try:
         with ThreadPoolExecutor(max_workers=config.orchestrator.max_parallel_functions) as executor:
             try:
+                stopping_reported = False
                 while True:
+                    if cancel.is_set() and not stopping_reported:
+                        save()
+                        stopping_reported = True
                     if stop.exists():
                         cancel.set()
                     drain()

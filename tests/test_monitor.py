@@ -215,3 +215,44 @@ def test_packaged_html_uses_text_nodes_for_untrusted_results():
     html = Path(server.__file__).with_name("index.html").read_text(encoding="utf-8")
     assert "textContent" in html
     assert "innerHTML" not in html
+
+
+def test_execution_status_reconciles_dead_process_and_preserves_verdicts(tmp_path):
+    session = tmp_path / "session.json"
+    save(session, {"1": {"address": "1", "success": False, "verdict": "PASS", "validation_verdict": "FAIL"}})
+    status = session.with_suffix(".json.execution.json")
+    status.write_text(json.dumps({"schema_version": 1, "phase": "running", "pid": 99999999, "created": 0,
+                                 "jobs": [{"address": "2", "state": "running", "stage": "reverser"}]}))
+    snapshot = Monitor(tmp_path, tmp_path / "state", ["session.json"]).snapshot()
+    assert snapshot["executions"][0]["phase"] == "interrupted"
+    assert snapshot["executions"][0]["jobs"][0]["stage"] == "interrupted"
+    assert snapshot["recent"][0]["verdict"] == "PASS"
+    assert snapshot["recent"][0]["validation_verdict"] == "FAIL"
+
+
+def test_parallel_stop_requests_cleanup_then_force_stops(tmp_path):
+    script = tmp_path / "worker.py"
+    script.write_text(
+        "import json, os, pathlib, psutil, time\n"
+        "pathlib.Path('session.json').write_text('{}')\n"
+        "pathlib.Path('session.json.execution.json').write_text(json.dumps({"
+        "'schema_version': 1, 'phase': 'running', 'pid': os.getpid(), "
+        "'created': psutil.Process().create_time(), 'jobs': []}))\n"
+        "time.sleep(60)\n"
+    )
+    monitor = Monitor(tmp_path, tmp_path / "state", ["session.json"], worker=[sys.executable, str(script)])
+    monitor.start()
+    try:
+        deadline = time.monotonic() + 10
+        while not monitor.executions() and time.monotonic() < deadline:
+            time.sleep(.02)
+        assert monitor.executions()
+        assert "Stop requested" in monitor.stop()["message"]
+        assert (tmp_path / "session.json.execution.stop").exists()
+        assert monitor.snapshot()["phase"] == "stopping"
+        assert monitor.active()
+        monitor.stop()
+        assert not monitor.active()
+    finally:
+        if monitor.active():
+            monitor.stop()
