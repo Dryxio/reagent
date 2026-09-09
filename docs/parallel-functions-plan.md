@@ -1,6 +1,8 @@
 # Bounded parallel function processing
 
-Status: implementation plan; no parallel execution is enabled by this document.
+Status: implemented. This document preserves the staged design and intermediate
+constraints. See [the usage guide](parallel-functions.md) for the final supported
+configuration, including cumulative promotion and parallel validation.
 
 ## Objective
 

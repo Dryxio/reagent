@@ -543,3 +543,9 @@ mypy src
 ## License
 
 MIT
+
+### Bounded parallel function processing
+
+Class and manifest runs support provider-independent concurrency with isolated
+workers, durable recovery, and live progress. Sequential execution remains the
+default. See [configuration and behavior](docs/parallel-functions.md).
