@@ -48,6 +48,12 @@ class ObservedProvider:
         return self._call(conversation_id=conversation_id, message=message)
 
     def _call(self, **request: Any) -> str:
+        from re_agent.orchestrator.execution import current, progress
+
+        progress(self.role)
+        context = current()
+        if context:
+            context.emit("call", self.role)
         number = self.budget.consume()
         start = time.monotonic()
         event: dict[str, Any] = {"role": self.role, "call": number, "request": request}
@@ -57,6 +63,8 @@ class ObservedProvider:
             else:
                 response = self.provider.resume(request["conversation_id"], request["message"])
             event["response"] = response
+            if context:
+                context.check()
             return response
         except Exception as exc:
             event["error"] = str(exc)

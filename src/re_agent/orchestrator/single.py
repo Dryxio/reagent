@@ -123,6 +123,18 @@ def validate_result(
     backend: REBackend,
     indexer: SourceIndexer | None = None,
 ) -> ReversalResult:
+    from re_agent.orchestrator.execution import validation_lane
+
+    with validation_lane():
+        return _validate_result(result, config, backend, indexer)
+
+
+def _validate_result(
+    result: ReversalResult,
+    config: ReAgentConfig,
+    backend: REBackend,
+    indexer: SourceIndexer | None = None,
+) -> ReversalResult:
     """Validate one round and return its candidate-level diagnostics."""
     target = result.target
     if result.code:

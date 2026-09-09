@@ -83,8 +83,40 @@ def run_process(
             start_new_session=os.name != "nt",
         )
         try:
-            proc.communicate(input_text, timeout=timeout_s)
+            import time
+
+            from re_agent.orchestrator.execution import current
+
+            context = current()
+            deadline = time.monotonic() + timeout_s
+            first = True
+            while True:
+                if context:
+                    context.check()
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise subprocess.TimeoutExpired(args, timeout_s)
+                try:
+                    proc.communicate(input_text if first else None,
+                                     timeout=min(.1, remaining) if context else remaining)
+                    break
+                except subprocess.TimeoutExpired:
+                    first = False
+                    if not context:
+                        raise
         except BaseException:
+            # Capture descendants before killing their parent, including children
+            # that have detached into a separate POSIX session.
+            try:
+                import psutil
+
+                with contextlib.suppress(psutil.Error):
+                    descendants = psutil.Process(proc.pid).children(recursive=True)
+                    for child in reversed(descendants):
+                        with contextlib.suppress(psutil.Error):
+                            child.kill()
+            except ImportError:
+                pass
             if os.name == "nt":
                 subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"], capture_output=True, check=False)
             else:
