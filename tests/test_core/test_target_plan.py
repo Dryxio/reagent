@@ -42,6 +42,28 @@ def test_query_failure_remains_visible() -> None:
     assert any(gap.kind == "query_failed" and gap.origin == "xrefs_from" for gap in plan.gaps)
 
 
+@pytest.mark.parametrize("method, origin", [
+    ("decompile", "decompile"), ("get_context", "context"), ("xrefs_from", "xrefs_from"),
+])
+@pytest.mark.parametrize("message", ["", " \t\n", "evidence unavailable"])
+def test_query_failure_manifest_remains_loadable(
+    tmp_path: Path, method: str, origin: str, message: str,
+) -> None:
+    backend = StubBackend()
+    with patch.object(backend, method, side_effect=NotImplementedError(message)):
+        plan = build_plan(backend, ["100"], "a" * 64)
+    path = tmp_path / "manifest.json"
+    plan.save(path)
+
+    restored = TargetPlan.load(path)
+    assert restored == plan
+    gap = next(gap for gap in restored.gaps if gap.origin == origin)
+    assert gap.kind == "query_failed"
+    assert gap.reason.strip()
+    if message.strip():
+        assert gap.reason == message
+
+
 @pytest.mark.parametrize("depth, limit", [(-1, 1), (0, 0)])
 def test_invalid_limits(depth: int, limit: int) -> None:
     with pytest.raises(ValueError):

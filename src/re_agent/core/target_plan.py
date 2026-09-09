@@ -106,7 +106,8 @@ def build_plan(backend: REBackend, seeds: list[str], identity: str, *,
             target.caller_count = dec.callers or 0
             record["decompile"] = asdict(dec)
         except (OSError, ValueError, RuntimeError, NotImplementedError) as exc:
-            plan.gaps.append(EvidenceGap(address, str(exc), "decompile", "query_failed"))
+            reason = str(exc).strip() or type(exc).__name__
+            plan.gaps.append(EvidenceGap(address, reason, "decompile", "query_failed"))
         plan.functions.append(target)
         plan.evidence[address] = record
         if backend.capabilities.has_context:
@@ -130,7 +131,8 @@ def build_plan(backend: REBackend, seeds: list[str], identity: str, *,
                         raise ValueError("Context gap function does not match selected address")
                     plan.gaps.extend(gaps)
             except (OSError, ValueError, RuntimeError, NotImplementedError, AttributeError) as exc:
-                plan.gaps.append(EvidenceGap(address, str(exc), "context", "query_failed"))
+                reason = str(exc).strip() or type(exc).__name__
+                plan.gaps.append(EvidenceGap(address, reason, "context", "query_failed"))
         else:
             plan.gaps.append(EvidenceGap(address, "Backend does not provide context", "context", "unsupported"))
         if not backend.capabilities.has_xrefs:
@@ -140,7 +142,8 @@ def build_plan(backend: REBackend, seeds: list[str], identity: str, *,
             refs = backend.xrefs_from(address)
             callees = sorted({checked_address(ref.address) for ref in refs if "CALL" in ref.ref_type.upper()})
         except (OSError, ValueError, RuntimeError, NotImplementedError) as exc:
-            plan.gaps.append(EvidenceGap(address, str(exc), "xrefs_from", "query_failed"))
+            reason = str(exc).strip() or type(exc).__name__
+            plan.gaps.append(EvidenceGap(address, reason, "xrefs_from", "query_failed"))
             continue
         for callee in callees:
             plan.edges.append({"source": address, "target": callee})
