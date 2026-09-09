@@ -181,8 +181,13 @@ def validate_candidate(
         except subprocess.TimeoutExpired:
             checks.append({"kind": kind, "verdict": "FAIL", "detail": "timed out"})
             return _failed(f"{kind} command timed out: {command}", candidate_file, findings, checks)
-        tail = "\n".join((proc.stdout + proc.stderr).splitlines()[-20:])
-        findings.append(f"{kind}: {command} -> exit {proc.returncode}\n{tail}".rstrip())
+        # First errors often explain cascades of missing types/declarations.
+        # Keep them alongside the final summary, prioritizing compiler stderr.
+        lines = (proc.stderr + "\n" + proc.stdout).strip().splitlines()
+        if len(lines) > 20:
+            lines = [*lines[:10], "[intermediate output omitted]", *lines[-10:]]
+        excerpt = "\n".join(line[:500] for line in lines)
+        findings.append(f"{kind}: {command} -> exit {proc.returncode}\n{excerpt}".rstrip())
         checks.append({"kind": kind, "verdict": "PASS" if proc.returncode == 0 else "FAIL",
                        "detail": f"exit {proc.returncode}"})
         if proc.returncode != 0:
