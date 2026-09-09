@@ -362,6 +362,30 @@ Global options must precede the subcommand, for example
 
 Use `re-agent <command> --help` for the exact option list.
 
+## Working with function groups
+
+For targets that span classes or have no recovered class names, create a bounded
+manifest before running reconstruction:
+
+```sh
+re-agent plan --address 0x140001000 --max-depth 2 --max-functions 50 --output group.json
+re-agent reverse --manifest group.json --dry-run
+re-agent reverse --manifest group.json --max-functions 5
+re-agent status --manifest group.json --format json
+re-agent evidence --manifest group.json --output evidence-packets
+```
+
+Planning makes no model calls. Manifests retain returned evidence, direct call
+edges, input fingerprints, and explicit gaps. Execution reuses the existing
+validation and resume workflow; evidence export reads the stored snapshot only.
+Use a new or empty export directory. Coverage describes the selected inventory
+and configured acceptance policy, not proof of whole-program equivalence.
+
+Build/test/runtime commands also accept argument arrays for native Windows and
+POSIX execution; legacy shell strings retain their `/bin/sh` requirement. See
+[configuration](docs/configuration.md) for command forms and manifest semantics,
+and [implementation stages](docs/tooling-upgrade-plan.md) for scope and validation.
+
 ## Configuration precedence
 
 The effective order is CLI runtime overrides, supported environment variables,
