@@ -240,6 +240,14 @@ def load_config(
 
 
 def validate_config(config: ReAgentConfig) -> None:
+    workers = config.orchestrator.max_parallel_functions
+    validations = config.orchestrator.max_parallel_validations
+    if type(workers) is not int or not 1 <= workers <= 32:
+        raise ValueError("max_parallel_functions must be an integer from 1 to 32")
+    if type(validations) is not int or not 1 <= validations <= workers:
+        raise ValueError("max_parallel_validations must be between 1 and max_parallel_functions")
+    if validations > 1 and not (config.validation.parallel_safe and config.validation.copy_project):
+        raise ValueError("Parallel validation requires copy_project and an explicit parallel_safe command contract")
     for name in (
         "max_review_rounds",
         "max_functions_per_class",

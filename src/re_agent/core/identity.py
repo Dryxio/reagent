@@ -19,6 +19,7 @@ def project_fingerprint(config: ReAgentConfig) -> str:
         "parity": asdict(config.parity),
         "backend": asdict(config.backend),
     }
+    values["validation"].pop("parallel_safe", None)
     digest.update(json.dumps(values, sort_keys=True).encode())
     root = Path(config.project_profile.source_root).resolve()
     digest.update(str(root).encode())
