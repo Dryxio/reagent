@@ -48,9 +48,9 @@ def test_status_no_session(tmp_path: Path) -> None:
     # Create a minimal config with session file in tmp
     config_path.write_text(f'''
 output:
-  session_file: "{tmp_path}/progress.json"
-  report_dir: "{tmp_path}/reports"
-  log_dir: "{tmp_path}/logs"
+  session_file: "{tmp_path.as_posix()}/progress.json"
+  report_dir: "{tmp_path.as_posix()}/reports"
+  log_dir: "{tmp_path.as_posix()}/logs"
 ''')
     result = main(["--config", str(config_path), "status"])
     assert result == 0

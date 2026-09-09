@@ -44,11 +44,13 @@ class CodexCLIProvider:
                     str(out_path),
                     "-m",
                     str(model),
-                    prompt,
+                    "-",
                 ],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
+                input=prompt,
                 text=True,
+                encoding="utf-8",
                 timeout=self._timeout_s,
                 check=False,
             )
@@ -78,9 +80,9 @@ class CodexCLIProvider:
         if history is None:
             raise KeyError(f"Unknown conversation ID: {conversation_id}")
 
-        history.append(Message(role="user", content=message))
-        response_text = self.send(list(history))
-        history.append(Message(role="assistant", content=response_text))
+        user_message = Message(role="user", content=message)
+        response_text = self.send([*history, user_message])
+        history.extend([user_message, Message(role="assistant", content=response_text)])
         return response_text
 
     @staticmethod

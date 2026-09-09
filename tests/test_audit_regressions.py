@@ -27,6 +27,15 @@ from re_agent.verification.differential import compare_commands
 from tests.test_agents.test_loop import MockLLM
 
 
+def _symlink(link: Path, target: Path) -> None:
+    try:
+        link.symlink_to(target)
+    except OSError as exc:
+        if getattr(exc, "winerror", None) == 1314:
+            pytest.skip("Creating symlinks requires Windows developer mode or privilege")
+        raise
+
+
 def config_for(tmp_path: Path) -> ReAgentConfig:
     config = ReAgentConfig()
     config.project_profile.source_root = str(tmp_path / "src")
@@ -48,8 +57,8 @@ def test_real_compiler_failure_is_repaired(tmp_path: Path) -> None:
     source = Path(config.project_profile.source_root) / "f.cpp"
     source.write_text("int Foo() { return 0; }\nint main() { return Foo() == 7 ? 0 : 1; }\n")
     config.validation = ValidationConfig(
-        build_commands=[f'"{compiler}" "{{candidate_file}}" -o "{{overlay_root}}/program"'],
-        test_commands=['"{overlay_root}/program"'],
+        build_commands=[[compiler, "{candidate_file}", "-o", "{overlay_root}/program.exe"]],
+        test_commands=[["{overlay_root}/program.exe"]],
         trust_configured_commands=True,
     )
     reverser = MockLLM(["```cpp\nint Foo() { return missing; }\n```", "```cpp\nint Foo() { return 7; }\n```"])
@@ -81,7 +90,7 @@ def test_real_runtime_failure_is_repaired(tmp_path: Path) -> None:
         'print("counterexample: expected return 7")\nsys.exit(0 if "return 7" in s else 1)'
     )
     config.validation = ValidationConfig(
-        runtime_commands=[f'"{sys.executable}" "{script}" "{{candidate_file}}"'],
+        runtime_commands=[[sys.executable, str(script), "{candidate_file}"]],
         trust_configured_commands=True,
     )
     result = reverse_single(
@@ -133,7 +142,7 @@ def test_overlay_links_are_remapped(tmp_path: Path, absolute: bool) -> None:
     src.mkdir()
     file = src / "a.cpp"
     file.write_text("int Foo() { return 1; }")
-    (src / "z.cpp").symlink_to(file if absolute else Path("a.cpp"))
+    _symlink(src / "z.cpp", file if absolute else Path("a.cpp"))
     source = SourceIndexer(src, ProjectProfile()).find("", "Foo")
     candidate = create_candidate_overlay(
         FunctionTarget("0x100", "", "Foo"),
@@ -157,7 +166,7 @@ def test_external_link_rejected(tmp_path: Path) -> None:
     project.mkdir()
     external = tmp_path / "outside"
     external.write_text("unchanged")
-    (project / "link").symlink_to(external)
+    _symlink(project / "link", external)
     with pytest.raises(ValueError, match="symlink"):
         create_candidate_overlay(
             FunctionTarget("0x100", "", "Foo"),
@@ -172,6 +181,7 @@ def test_external_link_rejected(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize("quote", ["", "'", '"'])
+@pytest.mark.skipif(not Path("/bin/sh").exists(), reason="POSIX shell required")
 def test_shell_placeholders_are_data(tmp_path: Path, quote: str) -> None:
     file = tmp_path / "a'b $(touch injected).cpp"
     file.write_text("int f() {}")
@@ -298,7 +308,8 @@ def test_json_backend_preserves_identity_and_rejects_bad_schema(tmp_path: Path) 
         backend.decompile("0x401000")
 
 
-def test_clang_index_handles_namespaces_operators_and_utf8(tmp_path: Path) -> None:
+@pytest.mark.parametrize("newline", ["\n", "\r\n"])
+def test_clang_index_handles_namespaces_operators_and_utf8(tmp_path: Path, newline: str) -> None:
     if not shutil.which("clang++"):
         pytest.skip("Clang is required for optional AST indexing")
     file = tmp_path / "f.cpp"
@@ -306,7 +317,7 @@ def test_clang_index_handles_namespaces_operators_and_utf8(tmp_path: Path) -> No
         "// éé\nnamespace app { struct C { int Foo(int); int Foo(double); int operator()(); }; }\n"
         "int app::C::Foo(int x) { return x; }\n"
         "int app::C::Foo(double x) { return int(x); }\n"
-        "int app::C::operator()() { return 3; }\n"
+        "int app::C::operator()() { return 3; }\n", encoding="utf-8", newline=newline
     )
     database = tmp_path / "compile_commands.json"
     database.write_text(
@@ -319,7 +330,7 @@ def test_clang_index_handles_namespaces_operators_and_utf8(tmp_path: Path) -> No
     assert index.find("app::C", "Foo") is None
     operator = index.find("app::C", "operator()")
     assert operator and operator.body == "{ return 3; }"
-    assert file.read_text()[operator.body_start : operator.body_end] == operator.body
+    assert file.read_text(encoding="utf-8")[operator.body_start : operator.body_end] == operator.body
 
 
 def test_class_candidates_compose_without_mutating_original(tmp_path: Path) -> None:
@@ -339,8 +350,8 @@ def test_class_candidates_compose_without_mutating_original(tmp_path: Path) -> N
     config.validation = ValidationConfig(
         copy_project=True,
         project_root=str(tmp_path),
-        build_commands=[f'"{compiler}" src/c.cpp -o program'],
-        test_commands=["./program"],
+        build_commands=[[compiler, "src/c.cpp", "-o", "program.exe"]],
+        test_commands=[["{overlay_root}/program.exe"]],
         trust_configured_commands=True,
     )
     backend = StubBackend([FunctionEntry("0x100", "A", "C"), FunctionEntry("0x200", "B", "C")])
@@ -508,9 +519,9 @@ def test_differential_counterexample_repairs_compiled_candidate(tmp_path: Path) 
     cases = tmp_path / "cases.json"
     cases.write_text("[0,1]")
     config.validation = ValidationConfig(
-        build_commands=[f'"{compiler}" "{{candidate_file}}" -o "{{overlay_root}}/program"'],
+        build_commands=[[compiler, "{candidate_file}", "-o", "{overlay_root}/program.exe"]],
         differential_reference=[sys.executable, "-c", "print(7)"],
-        differential_candidate=["{overlay_root}/program"],
+        differential_candidate=["{overlay_root}/program.exe"],
         differential_cases_file=str(cases),
         trust_configured_commands=True,
     )

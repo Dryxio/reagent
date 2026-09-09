@@ -1,6 +1,7 @@
 """Tests for candidate overlays and validation gates."""
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 import pytest
@@ -67,6 +68,7 @@ def test_candidate_overlay_sanitizes_template_and_operator_names(tmp_path: Path)
     assert not illegal_chars.intersection(candidate.name)
 
 
+@pytest.mark.skipif(not Path("/bin/sh").exists(), reason="POSIX shell required")
 def test_validation_gate_runs_configured_command(tmp_path: Path) -> None:
     candidate = tmp_path / "candidate.cpp"
     candidate.write_text("void f() {}", encoding="utf-8")
@@ -101,6 +103,7 @@ def test_nonisolated_command_must_consume_candidate(tmp_path: Path) -> None:
     assert "explicitly consume" in verdict.summary
 
 
+@pytest.mark.skipif(not Path("/bin/sh").exists(), reason="POSIX shell required")
 def test_untrusted_shell_gate_is_not_accepted_as_proof(tmp_path: Path) -> None:
     candidate = tmp_path / "candidate.cpp"
     candidate.write_text("invalid C++", encoding="utf-8")
@@ -168,7 +171,8 @@ def test_copy_project_builds_against_isolated_candidate(tmp_path: Path) -> None:
         ValidationConfig(
             copy_project=True,
             project_root=str(project),
-            build_commands=["grep -q NewCall src/Train.cpp"],
+            build_commands=[[sys.executable, "-c",
+                             "from pathlib import Path; assert 'NewCall' in Path('src/Train.cpp').read_text()"]],
             trust_configured_commands=True,
         ),
         candidate,

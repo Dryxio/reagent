@@ -219,3 +219,99 @@ Shell gates require POSIX `/bin/sh`. Placeholders are expanded as environment da
 including in single/double quotes. Isolated working directories cannot escape the
 copy. Copies are not OS sandboxes: trusted project commands can still explicitly
 access external paths. Internal links are remapped; external/broken links fail.
+
+
+### Portable validation commands
+
+Each build/test/runtime command may be a legacy POSIX shell string or an argument
+array. Arrays execute directly, without a shell, on Windows and POSIX:
+
+```yaml
+validation:
+  build_commands:
+    - [cmake, -S, "{overlay_root}", -B, "{overlay_root}/build"]
+    - [cmake, --build, "{overlay_root}/build"]
+  test_commands:
+    - [ctest, --test-dir, "{overlay_root}/build", --output-on-failure]
+```
+
+Arguments support `{candidate_file}`, `{overlay_root}`, and `{source_file}`.
+Spaces and shell metacharacters remain literal data; `$VAR` and shell syntax are
+not expanded in arrays. Legacy strings still require `/bin/sh`; doctor reports
+when it is missing. Existing isolation and command-trust requirements still
+apply. Non-isolated arrays must explicitly include a candidate/overlay placeholder.
+
+
+### Optional evidence gaps
+
+Function-context bundles and per-function Ghidra JSON exports may include `gaps`:
+
+```json
+{"function":"0x140001000","site":"0x140001010","kind":"unresolved_call",
+ "reason":"Indirect register call target not resolved","origin":"analysis-export"}
+```
+
+Kinds are `unavailable`, `unsupported`, `query_failed`, `unresolved_call`, and
+`limit`. The site is optional. Addresses are hexadecimal strings of unrestricted
+width. Labels describe observations; they do not establish recovered semantics.
+The graph preserves full context bundles and gap records alongside existing
+nodes/edges. Refreshing a context replaces its previous gap observations. Old
+exports remain supported; absent caller/callee fields produce unavailable records
+while explicitly empty lists describe a known empty result. Detailed indirect-call
+records require an exporter that supplies them; ReAgent does not invent targets.
+
+
+### Bounded target manifests
+
+`re-agent plan --address 0x140001000 --max-depth 2 --max-functions 50 --output group.json`
+creates a deterministic inventory without model calls. Repeat `--address` or use
+`--match` with the backend's symbol-search syntax. Seeds are visited first, then
+direct callees breadth-first. Cycles and duplicates are visited once. Depth zero
+includes only seeds but still records their observed direct dependencies.
+
+The manifest stores the existing project fingerprint, selected function identity,
+selection depth, full returned decompilation/context evidence, direct call edges,
+and explicit gaps. Limits describe incomplete exploration, never completeness.
+Only call references are traversed; unresolved indirect calls require backend
+records. Inspect gaps before using a manifest. Changing fingerprinted inputs
+requires regenerating the plan. Backend CLI configurations without local export
+content cannot fingerprint changes to an external analysis database; regenerate
+after changes to that database.
+
+
+Run a reviewed manifest with `re-agent reverse --manifest group.json --max-functions 5`.
+`--dry-run` checks input identity and displays the inventory without model calls.
+Manifest mode is exclusive with `--address` and `--class`. The existing selector
+orders only manifest members using backend dependencies; external callees are
+never added automatically. Existing retry limits, acceptance rules, sessions,
+and cumulative scratch validation apply across class boundaries. A function
+limit caps attempts in this invocation, not the total inventory. As with class
+runs, cumulative source promotion requires unique existing source definitions.
+
+
+### Searchable stored evidence
+
+`re-agent evidence --manifest group.json --output packets` writes an index,
+per-function JSON packets, a copy of the input manifest, and function/call/
+reference/gap TSV files. This reads stored manifest evidence only: it needs no
+backend, LLM, or configuration file and makes no claim about current binary state.
+Use a new or empty destination. TSV cells escape backslashes, tabs, carriage
+returns, and newlines. JSON packets retain full stored records and any truncation
+markers. The fingerprint and source context origin identify the evidence snapshot.
+
+
+### Manifest coverage
+
+`re-agent status --manifest group.json --format json` reconciles every selected
+function with existing session results. Primary statuses are `unattempted`,
+`attempted` (checkpoint only), `accepted`, `failed`, and `stale`; their counts sum
+to the planned inventory. Input mismatch marks recorded work stale. This read-only
+command does not rebind or archive the session. Results outside the manifest do
+not affect coverage. External call edges and evidence gaps come from the snapshot.
+
+Checker, objective, aggregate candidate-validation, and parity verdicts remain
+separate. New validation results also record each executed build/test/runtime/
+differential check in order. Missing checks mean no recorded execution, not a
+pass; older sessions retain their aggregate verdict without invented details.
+Acceptance means the configured policy accepted the candidate. It is not proof
+of equivalence, and selected-inventory coverage is not whole-program coverage.

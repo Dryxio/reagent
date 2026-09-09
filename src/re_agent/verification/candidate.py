@@ -118,7 +118,8 @@ def validate_candidate(
         source_file is None
         and config.copy_project
         and commands
-        and not any("{candidate_file}" in command for _, command in commands)
+        and not any("{candidate_file}" in part for _, command in commands
+                    for part in ([command] if isinstance(command, str) else command))
     ):
         return _failed(
             "Candidate has no source location; isolated project commands must explicitly use {candidate_file}",
@@ -150,28 +151,43 @@ def validate_candidate(
         }
     )
     findings: list[str] = []
+    checks: list[dict[str, str]] = []
     for kind, command in commands:
-        expanded = _expand_shell(command)
+        expanded = (
+            ["/bin/sh", "-lc", _expand_shell(command)] if isinstance(command, str)
+            else [_expand_argument(arg, env) for arg in command]
+        )
         try:
             proc = run_process(
-                ["/bin/sh", "-lc", expanded],
+                expanded,
                 cwd=_working_directory(config, candidate_file),
                 env=env,
                 timeout_s=config.command_timeout_s,
             )
+        except OSError as exc:
+            checks.append({"kind": kind, "verdict": "FAIL", "detail": str(exc)})
+            return _failed(f"{kind} command could not start: {exc}", candidate_file, findings, checks)
         except subprocess.TimeoutExpired:
-            return _failed(f"{kind} command timed out: {command}", candidate_file, findings)
+            checks.append({"kind": kind, "verdict": "FAIL", "detail": "timed out"})
+            return _failed(f"{kind} command timed out: {command}", candidate_file, findings, checks)
         tail = "\n".join((proc.stdout + proc.stderr).splitlines()[-20:])
         findings.append(f"{kind}: {command} -> exit {proc.returncode}\n{tail}".rstrip())
+        checks.append({"kind": kind, "verdict": "PASS" if proc.returncode == 0 else "FAIL",
+                       "detail": f"exit {proc.returncode}"})
         if proc.returncode != 0:
-            return _failed(f"Candidate {kind} gate failed", candidate_file, findings)
+            return _failed(f"Candidate {kind} gate failed", candidate_file, findings, checks)
 
     if config.differential_cases_file:
         from re_agent.verification.differential import compare_commands
 
-        cases = json.loads(Path(config.differential_cases_file).read_text(encoding="utf-8"))
+        try:
+            cases = json.loads(Path(config.differential_cases_file).read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            checks.append({"kind": "differential", "verdict": "FAIL", "detail": str(exc)})
+            return _failed("Could not read differential cases", candidate_file, findings, checks)
         if not isinstance(cases, list):
-            return _failed("Differential cases must be a JSON array", candidate_file)
+            checks.append({"kind": "differential", "verdict": "FAIL", "detail": "Cases must be a JSON array"})
+            return _failed("Differential cases must be a JSON array", candidate_file, findings, checks)
 
         def expand_args(args: list[str]) -> list[str]:
             values = {
@@ -192,9 +208,11 @@ def validate_candidate(
             Path(_working_directory(config, candidate_file)),
             config.command_timeout_s,
         )
+        checks.append({"kind": "differential", "verdict": "PASS" if comparison.passed else "FAIL",
+                       "detail": f"{comparison.cases_run} cases"})
         findings.extend(comparison.findings)
         if not comparison.passed:
-            return _failed("Candidate differential gate failed", candidate_file, findings)
+            return _failed("Candidate differential gate failed", candidate_file, findings, checks)
 
     if not config.trust_configured_commands:
         return ValidationVerdict(
@@ -204,6 +222,7 @@ def validate_candidate(
                 "validation.trust_configured_commands is explicitly enabled"
             ),
             findings=findings,
+            checks=checks,
             overlay_file=str(candidate_file),
         )
 
@@ -211,6 +230,7 @@ def validate_candidate(
         verdict=Verdict.PASS,
         summary="All configured candidate validation gates passed",
         findings=findings,
+        checks=checks,
         overlay_file=str(candidate_file),
     )
 
@@ -227,7 +247,17 @@ def _sanitize_path_component(value: str) -> str:
     return re.sub(r"[^A-Za-z0-9_.-]", "_", value)
 
 
-def _consumes_candidate(command: str) -> bool:
+def _expand_argument(argument: str, env: dict[str, str]) -> str:
+    # Single pass: replacement values are data, never additional placeholders.
+    return re.sub(
+        r"\{(candidate_file|overlay_root|source_file)\}",
+        lambda match: env["RE_AGENT_" + match[1].upper()], argument,
+    )
+
+
+def _consumes_candidate(command: str | list[str]) -> bool:
+    if isinstance(command, list):
+        return any(marker in arg for arg in command for marker in ("{candidate_file}", "{overlay_root}"))
     markers = (
         "{candidate_file}",
         "{overlay_root}",
@@ -268,11 +298,13 @@ def _failed(
     summary: str,
     candidate_file: Path,
     findings: list[str] | None = None,
+    checks: list[dict[str, str]] | None = None,
 ) -> ValidationVerdict:
     return ValidationVerdict(
         verdict=Verdict.FAIL,
         summary=summary,
         findings=findings or [],
+        checks=checks or [],
         overlay_file=str(candidate_file),
     )
 

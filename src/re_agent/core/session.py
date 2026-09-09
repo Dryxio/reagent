@@ -70,6 +70,8 @@ class Session:
             "error": result.error,
             "code_sha256": hashlib.sha256(result.code.encode()).hexdigest(),
             "code": result.code,
+            "objective_verdict": result.objective_verdict.verdict.value if result.objective_verdict else None,
+            "validation_checks": result.validation_verdict.checks if result.validation_verdict else [],
             "objective_findings": result.objective_verdict.findings if result.objective_verdict else [],
             "validation_findings": result.validation_verdict.findings if result.validation_verdict else [],
             "parity_findings": [asdict(f) for f in result.parity_findings],
@@ -138,3 +140,14 @@ class Session:
 
     def get_all_functions(self) -> list[dict[str, Any]]:
         return list(self._data["functions"].values())
+
+
+    @property
+    def identity(self) -> str | None:
+        """Fingerprint of current records; reading never rebinds or archives them."""
+        value = self._data.get("identity")
+        return value if isinstance(value, str) else None
+
+    def get_checkpoint(self, address: str) -> dict[str, Any] | None:
+        value = self._data.get("checkpoints", {}).get(normalize_address(address))
+        return dict(value) if isinstance(value, dict) else None

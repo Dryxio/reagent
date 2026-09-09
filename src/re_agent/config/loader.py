@@ -257,9 +257,16 @@ def validate_config(config: ReAgentConfig) -> None:
         "build_commands",
         "test_commands",
         "runtime_commands",
-        "differential_reference",
-        "differential_candidate",
-    ):
+        ):
+        value = getattr(config.validation, name)
+        if not isinstance(value, list) or not all(
+            (isinstance(item, str) and bool(item.strip()))
+            or (isinstance(item, list) and bool(item) and all(isinstance(arg, str) for arg in item)
+                and bool(item[0].strip()))
+            for item in value
+        ):
+            raise ValueError(f"validation.{name} must contain nonempty shell strings or argument arrays")
+    for name in ("differential_reference", "differential_candidate"):
         value = getattr(config.validation, name)
         if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
             raise ValueError(f"validation.{name} must be a list of strings")

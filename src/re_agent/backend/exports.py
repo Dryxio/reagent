@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
@@ -12,6 +13,7 @@ from re_agent.core.models import (
     AnalysisArtifact,
     AsmResult,
     DecompileResult,
+    EvidenceGap,
     FunctionEntry,
     StructDef,
     StructField,
@@ -120,6 +122,12 @@ class GhidraExportsBackend(StubBackend):
 
     def get_context(self, target: str) -> AnalysisArtifact:
         value = self._function(target)
+        raw_gaps = value.get("gaps", [])
+        if not isinstance(raw_gaps, list):
+            raise ValueError("Export gaps must be a list")
+        gaps = [EvidenceGap.from_dict(gap) for gap in raw_gaps]
+        if any(gap.function != normalize_address(target) for gap in gaps):
+            raise ValueError("Export gap function does not match target")
         data = {
             "schema_version": 1,
             "kind": "function-context",
@@ -128,9 +136,18 @@ class GhidraExportsBackend(StubBackend):
                 k: value.get(k) for k in ("address", "name", "signature", "calling_convention", "callees", "callers")
             },
             "globals": value.get("data_refs", []),
-            "strings": [],
+            "strings": value.get("strings", []),
+            "origin": str(self.root / f"{normalize_address(target)}.json"),
+            "gaps": [asdict(gap) for gap in gaps],
             "cfg": value.get("cfg", []),
         }
+        for field in ("callers", "callees"):
+            if value.get(field) is None:
+                data["function"][field] = []
+                data["gaps"].append(asdict(EvidenceGap(
+                    normalize_address(target), f"Export does not contain {field}",
+                    str(self.root / f"{normalize_address(target)}.json"), "unavailable",
+                )))
         return AnalysisArtifact("function-context", target, json.dumps(data))
 
     def _ir(self, target: str, kind: str) -> AnalysisArtifact | None:

@@ -13,8 +13,13 @@ from re_agent.reports.formatter import format_result
 
 
 def cmd_reverse(args: argparse.Namespace) -> int:
-    if not args.address and not args.class_name:
-        print("Error: specify --address or --class", file=sys.stderr)
+    manifest_path = getattr(args, "manifest", None)
+    if manifest_path and (args.address or args.class_name):
+        raise ValueError("--manifest cannot be combined with --address or --class")
+    if args.max_functions is not None and args.max_functions < 1:
+        raise ValueError("--max-functions must be positive")
+    if not args.address and not args.class_name and not manifest_path:
+        print("Error: specify --address, --class, or --manifest", file=sys.stderr)
         return 1
     config = load_config(Path(args.config))
 
@@ -25,7 +30,20 @@ def cmd_reverse(args: argparse.Namespace) -> int:
 
     validate_config(config)
 
+    from re_agent.core.identity import project_fingerprint
+    from re_agent.core.target_plan import TargetPlan
+
+    plan = TargetPlan.load(Path(manifest_path)) if manifest_path else None
+    if plan is not None and plan.identity != project_fingerprint(config):
+        raise ValueError("Target manifest inputs changed; regenerate with plan before reversal")
     if args.dry_run:
+        if plan is not None:
+            import json
+            from dataclasses import asdict
+
+            print(json.dumps({"functions": [asdict(target) for target in plan.functions],
+                              "gaps": [asdict(gap) for gap in plan.gaps]}, indent=2))
+            return 0
         return _dry_run(args, config)
 
     validation = config.validation
@@ -43,8 +61,6 @@ def cmd_reverse(args: argparse.Namespace) -> int:
     checker_llm = create_provider(config.agents.checker or config.llm)
     backend = create_backend(config.backend)
     session = Session(config.output.session_file)
-    from re_agent.core.identity import project_fingerprint
-
     session.bind(project_fingerprint(config))
 
     if args.address:
@@ -93,18 +109,24 @@ def cmd_reverse(args: argparse.Namespace) -> int:
             print(format_result(result))
         return 0 if result.success else 1
 
-    if args.class_name:
+    if args.class_name or plan is not None:
         from re_agent.orchestrator.class_runner import reverse_class
 
-        results = reverse_class(
-            class_name=args.class_name,
-            config=config,
-            backend=backend,
-            llm=reverser_llm,
-            checker_llm=checker_llm,
-            session=session,
-            max_functions=args.max_functions,
-        )
+        if plan is not None:
+            from re_agent.orchestrator.batch_runner import reverse_manifest
+
+            results = reverse_manifest(plan, config, backend, reverser_llm, session,
+                                       args.max_functions, checker_llm)
+        else:
+            results = reverse_class(
+                class_name=args.class_name,
+                config=config,
+                backend=backend,
+                llm=reverser_llm,
+                checker_llm=checker_llm,
+                session=session,
+                max_functions=args.max_functions,
+            )
         from re_agent.reports.formatter import results_to_json, results_to_markdown
 
         if config.output.format == "json":
@@ -119,7 +141,7 @@ def cmd_reverse(args: argparse.Namespace) -> int:
         print(f"Results: {passed}/{total} passed", file=sys.stderr)
         return 0 if passed == total else 1
 
-    print("Error: specify --address or --class", file=sys.stderr)
+    print("Error: specify --address, --class, or --manifest", file=sys.stderr)
     return 1
 
 
@@ -145,5 +167,5 @@ def _dry_run(args: argparse.Namespace, config: ReAgentConfig) -> int:
         print(f"  Max rounds per function: {config.orchestrator.max_review_rounds}")
         return 0
 
-    print("Error: specify --address or --class", file=sys.stderr)
+    print("Error: specify --address, --class, or --manifest", file=sys.stderr)
     return 1

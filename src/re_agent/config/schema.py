@@ -126,9 +126,9 @@ class ValidationConfig:
     enabled: bool = True
     copy_project: bool = False
     project_root: str = "."
-    build_commands: list[str] = field(default_factory=list)
-    test_commands: list[str] = field(default_factory=list)
-    runtime_commands: list[str] = field(default_factory=list)
+    build_commands: list[str | list[str]] = field(default_factory=list)
+    test_commands: list[str | list[str]] = field(default_factory=list)
+    runtime_commands: list[str | list[str]] = field(default_factory=list)
     differential_reference: list[str] = field(default_factory=list)
     differential_candidate: list[str] = field(default_factory=list)
     differential_cases_file: str | None = None

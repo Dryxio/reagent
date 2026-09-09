@@ -81,6 +81,7 @@ class ValidationVerdict:
     summary: str
     findings: list[str] = field(default_factory=list)
     overlay_file: str | None = None
+    checks: list[dict[str, str]] = field(default_factory=list)
 
 
 @dataclass
@@ -290,3 +291,28 @@ class ManualCheckEntry:
 
     line: int
     note: str
+
+
+@dataclass(frozen=True)
+class EvidenceGap:
+    """An observed limitation, not a guessed dependency or recovered fact."""
+
+    function: str
+    reason: str
+    origin: str
+    kind: str = "unavailable"
+    site: str | None = None
+
+    @classmethod
+    def from_dict(cls, value: object) -> EvidenceGap:
+        if not isinstance(value, dict):
+            raise ValueError("Evidence gap must be an object")
+        required = ("function", "reason", "origin", "kind")
+        if any(not isinstance(value.get(key), str) or not value[key].strip() for key in required):
+            raise ValueError("Evidence gap requires function, reason, origin, and kind strings")
+        if value["kind"] not in {"unavailable", "unsupported", "query_failed", "unresolved_call", "limit"}:
+            raise ValueError("Unknown evidence gap kind")
+        from re_agent.utils.address import checked_address
+
+        return cls(checked_address(value["function"]), value["reason"], value["origin"], value["kind"],
+                   checked_address(value["site"]) if value.get("site") is not None else None)
