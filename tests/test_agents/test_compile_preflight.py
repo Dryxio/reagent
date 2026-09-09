@@ -10,7 +10,14 @@ from re_agent.orchestrator.single import reverse_single
 from tests.test_agents.test_loop import MockLLM
 
 
-def test_compile_failure_repairs_without_reviewing_or_rebuilding_bad_output(tmp_path, monkeypatch):
+@pytest.mark.parametrize(("bad", "good"), [
+    ('std::uint32_t f() { return 1; }',
+     '#include <cstdint>\nstd::uint32_t f() { return 1; }'),
+    ('unsigned f(unsigned* p, unsigned v) { std::atomic_ref<unsigned>(*p).exchange(v); return v; }',
+     '#include <atomic>\nunsigned f(unsigned* p, unsigned v) { '
+     'std::atomic_ref<unsigned>(*p).exchange(v); return v; }'),
+], ids=["fixed-width-header", "atomic-header"])
+def test_compile_failure_repairs_without_reviewing_or_rebuilding_bad_output(tmp_path, monkeypatch, bad, good):
     compiler = shutil.which("clang++") or shutil.which("g++")
     if not compiler:
         pytest.skip("C++ compiler unavailable")
@@ -28,8 +35,6 @@ def test_compile_failure_repairs_without_reviewing_or_rebuilding_bad_output(tmp_
     config.validation.require_build = True
     config.validation.trust_configured_commands = True
     config.validation.working_directory = str(tmp_path)
-    bad = 'std::uint32_t f() { return 1; }'
-    good = '#include <cstdint>\nstd::uint32_t f() { return 1; }'
     reverser = MockLLM([f"```cpp\n{bad}\n```", f"```cpp\n{good}\n```"])
     checker = MockLLM(['{"verdict":"PASS","summary":"Matches"}'])
     from re_agent.verification import candidate
