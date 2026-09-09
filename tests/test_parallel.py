@@ -197,11 +197,12 @@ def test_cumulative_proposals_same_file_revalidate_latest_generation(tmp_path, m
     assert not session.is_completed("2")
 
 
-def test_fatal_configuration_stops_dispatch(setup):
+@pytest.mark.parametrize("error", [ValueError, RuntimeError])
+def test_fatal_configuration_stops_dispatch(setup, error):
     config, backend, targets, session = setup
 
     def factory(cfg):
-        raise ValueError("invalid provider settings")
+        raise error("invalid provider settings")
 
     assert reverse_parallel(targets, config, backend, session, factory, 4) == []
     status = json.loads(session.path.with_suffix(".json.execution.json").read_text())

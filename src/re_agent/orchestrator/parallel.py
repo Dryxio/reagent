@@ -220,7 +220,10 @@ def _run(targets: list[FunctionTarget], config: ReAgentConfig, backend: REBacken
         if value["state"] in {"completed", "failed"}:
             recovered = decode_result(value["result"])
             if promote and recovered.success and not session.is_completed(recovered.target.address):
-                recovered = promote(recovered, backend)
+                with executing(Execution(cancel, gate, lambda k, v: None)):
+                    recovered = promote(recovered, backend)
+                value.update(state="completed" if recovered.success else "failed", result=_result_to_dict(recovered))
+                save(value["id"])
             session.record_result_once(recovered)
         else:
             value["state"] = "interrupted"
@@ -261,7 +264,7 @@ def _run(targets: list[FunctionTarget], config: ReAgentConfig, backend: REBacken
                 try:
                     providers = [factory(isolated.agents.reverser or isolated.llm)]
                     providers.append(factory(isolated.agents.checker or isolated.llm))
-                except (ValueError, OSError) as exc:
+                except Exception as exc:
                     emit(job, "fatal", {"category": "configuration", "message": str(exc)})
                     cancel.set()
                     raise
