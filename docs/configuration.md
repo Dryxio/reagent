@@ -287,3 +287,14 @@ never added automatically. Existing retry limits, acceptance rules, sessions,
 and cumulative scratch validation apply across class boundaries. A function
 limit caps attempts in this invocation, not the total inventory. As with class
 runs, cumulative source promotion requires unique existing source definitions.
+
+
+### Searchable stored evidence
+
+`re-agent evidence --manifest group.json --output packets` writes an index,
+per-function JSON packets, a copy of the input manifest, and function/call/
+reference/gap TSV files. This reads stored manifest evidence only: it needs no
+backend, LLM, or configuration file and makes no claim about current binary state.
+Use a new or empty destination. TSV cells escape backslashes, tabs, carriage
+returns, and newlines. JSON packets retain full stored records and any truncation
+markers. The fingerprint and source context origin identify the evidence snapshot.

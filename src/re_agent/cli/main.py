@@ -28,6 +28,10 @@ def build_parser() -> argparse.ArgumentParser:
     plan_p.add_argument("--max-functions", type=int, default=100)
     plan_p.add_argument("--output", required=True)
 
+    evidence_p = sub.add_parser("evidence", help="Export stored manifest evidence into searchable packets")
+    evidence_p.add_argument("--manifest", required=True)
+    evidence_p.add_argument("--output", required=True)
+
     # init
     init_p = sub.add_parser("init", help="Initialize re-agent.yaml config file")
     init_p.add_argument("--profile", default=None, help="Use a built-in project profile template")
@@ -73,6 +77,10 @@ def _main(argv: list[str] | None = None) -> int:
         parser.print_help()
         return 0
 
+    if args.command == "evidence":
+        from re_agent.cli.cmd_evidence import cmd_evidence
+
+        return cmd_evidence(args)
     if args.command == "plan":
         from re_agent.cli.cmd_plan import cmd_plan
 
