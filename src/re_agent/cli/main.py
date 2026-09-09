@@ -10,7 +10,7 @@ def build_parser() -> argparse.ArgumentParser:
         prog="re-agent",
         description="Autonomous reverse engineering agent",
     )
-    parser.add_argument("--version", action="version", version="%(prog)s 0.3.0")
+    parser.add_argument("--version", action="version", version="%(prog)s 0.4.0")
     parser.add_argument("--config", default="re-agent.yaml", help="Config file path")
 
     sub = parser.add_subparsers(dest="command", help="Available commands")

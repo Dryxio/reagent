@@ -3,7 +3,7 @@
 Install `auto-re-agent` and the Ghidra bridge from PyPI:
 
 ```bash
-python3 -m pip install --upgrade "auto-re-agent[headless]>=0.3.0"
+python3 -m pip install --upgrade "auto-re-agent[headless]>=0.4.0"
 ```
 
 ## Prepare Ghidra
@@ -28,6 +28,10 @@ Edit `re-agent.yaml` to configure:
 - `backend.cli_path: ghidra-bridge`;
 - the project source paths and patterns;
 - trusted build/test commands for candidate validation.
+
+On native Windows, use argument arrays for build/test/runtime commands, such as
+`[cmake, --build, "{overlay_root}/build"]`. String commands still require POSIX
+`/bin/sh`. See [portable validation commands](configuration.md#portable-validation-commands).
 
 Validation is strict by default. With no configured commands it returns
 `UNKNOWN`, which `require_verified: true` rejects. Configure meaningful project
