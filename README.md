@@ -23,6 +23,8 @@ Copy this into your agent:
 
 You'll need a program to analyze and a supported AI provider. Your agent can help connect Ghidra and use an existing authenticated Claude or Codex CLI, or an API setup.
 
+**Setup agents:** follow the [setup workflow](docs/agent-setup.md). Detect the host OS and installed toolchain, generate portable validation commands, and migrate incompatible existing commands before starting reversal. The user should not need an OS-specific prompt or edit command syntax manually.
+
 ## What it does
 
 ```text
