@@ -62,7 +62,10 @@ class Session:
         entry = self._data.get("checkpoints", {}).get(normalize_address(address))
         return json.dumps(entry, indent=2) if entry else ""
 
-    def record_result(self, result: ReversalResult) -> None:
+    def record_result_once(self, result: ReversalResult) -> None:
+        self.record_result(result, idempotent=True)
+
+    def record_result(self, result: ReversalResult, *, idempotent: bool = False) -> None:
         addr = normalize_address(result.target.address)
         entry = {
             "address": result.target.address,
@@ -87,6 +90,8 @@ class Session:
         with file_lock(self.path):
             if self.path.exists():
                 self.load()
+            if idempotent and result.run_id and any(r.get("run_id") == result.run_id for r in self._data["runs"]):
+                return
             self._data["functions"][addr] = entry
             self._data["runs"].append(entry)
             self.save()

@@ -52,9 +52,9 @@ class ObservedProvider:
 
         progress(self.role)
         context = current()
+        number = self.budget.consume()
         if context:
             context.emit("call", self.role)
-        number = self.budget.consume()
         start = time.monotonic()
         event: dict[str, Any] = {"role": self.role, "call": number, "request": request}
         try:
