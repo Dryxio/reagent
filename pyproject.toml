@@ -43,10 +43,11 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+monitor = ["psutil>=7.0"]
 ghidra-bridge = ["ghidra-ai-bridge>=0.2.0"]
 headless = ["ghidra-ai-bridge[headless]>=0.2.0"]
 benchmark = ["pefile>=2024.8.26", "unicorn>=2.1"]
-dev = ["pytest>=8.0", "pytest-cov>=5.0", "ruff>=0.8", "mypy>=1.13"]
+dev = ["pytest>=8.0", "pytest-cov>=5.0", "ruff>=0.8", "mypy>=1.13", "psutil>=7.0"]
 
 [project.scripts]
 re-agent = "re_agent.cli.main:main"
@@ -74,7 +75,7 @@ warn_return_any = true
 warn_unused_configs = true
 
 [[tool.mypy.overrides]]
-module = ["anthropic.*", "openai.*"]
+module = ["anthropic.*", "openai.*", "psutil.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

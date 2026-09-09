@@ -15,6 +15,15 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub = parser.add_subparsers(dest="command", help="Available commands")
 
+    monitor_p = sub.add_parser("monitor", help="Host a local live progress dashboard")
+    monitor_p.add_argument("--work-dir", default=".", help="Directory containing run sessions")
+    monitor_p.add_argument("--state-dir", default="reports/monitor", help="Monitor control state and worker logs")
+    monitor_p.add_argument("--session-glob", action="append", help="Relative session pattern (repeatable)")
+    monitor_p.add_argument("--log-glob", help="Relative activity-log pattern; shows most recently modified log")
+    monitor_p.add_argument("--total", type=int, default=0, help="Planned function count; 0 means unknown")
+    monitor_p.add_argument("--port", type=int, default=8765)
+    monitor_p.add_argument("--worker", nargs=argparse.REMAINDER, help="Optional worker argv; must be the last option")
+
     doctor_p = sub.add_parser("doctor", help="Check configuration and exported evidence without LLM calls")
     doctor_p.add_argument("--address", help="Check evidence for one function")
     benchmark_p = sub.add_parser("benchmark", help="Run a differential harness manifest")
@@ -77,6 +86,11 @@ def _main(argv: list[str] | None = None) -> int:
     if args.command is None:
         parser.print_help()
         return 0
+
+    if args.command == "monitor":
+        from re_agent.cli.cmd_monitor import cmd_monitor
+
+        return cmd_monitor(args)
 
     if args.command == "evidence":
         from re_agent.cli.cmd_evidence import cmd_evidence
