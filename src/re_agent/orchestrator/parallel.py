@@ -143,6 +143,8 @@ def reverse_parallel(
     from re_agent.orchestrator.execution import cancellation_signals
 
     with session.coordinator(), cancellation_signals(cancel):
+        if session.identity != identity:
+            session.bind(identity)
         return _run(targets, config, backend, session, provider_factory, limit, cancel, root, promote)
 
 

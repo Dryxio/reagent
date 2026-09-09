@@ -303,3 +303,16 @@ def test_parallel_enumeration_falls_back_without_sharing_provider(setup, monkeyp
     assert len(result) == 4
     with pytest.raises(ValueError, match="positive"):
         reverse_class("C", config, backend, None, session, 0, provider_factory=lambda c: Mock())
+
+
+def test_library_parallel_run_rebinds_changed_semantic_identity(setup, monkeypatch):
+    config, backend, targets, session = setup
+    monkeypatch.setattr("re_agent.orchestrator.parallel.reverse_single",
+                        lambda target, *args, **kwargs: ReversalResult(target, "ok", success=True))
+    assert len(reverse_parallel(targets[:1], config, backend, session, lambda c: Mock(), 1)) == 1
+    original = session.identity
+    config.llm.model = "new-model"
+    assert len(reverse_parallel(targets[:1], config, backend, session, lambda c: Mock(), 1)) == 1
+    assert original is not None and session.identity != original
+    assert session.attempt_count(targets[0].address) == 1
+    assert len(json.loads(session.path.read_text())["history"]) == 1

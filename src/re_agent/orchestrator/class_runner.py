@@ -215,5 +215,11 @@ def reverse_class(
         raise ValueError("Function attempt limit must be positive")
     session = session or Session(config.output.session_file)
     with session.coordinator():
+        if config.orchestrator.max_parallel_functions > 1:
+            from re_agent.core.identity import project_fingerprint
+
+            identity = project_fingerprint(config)
+            if session.identity != identity:
+                session.bind(identity)
         return _reverse_class_run(class_name, config, backend, llm, session, max_functions, checker_llm,
                                   target_addresses=target_addresses, provider_factory=provider_factory)
