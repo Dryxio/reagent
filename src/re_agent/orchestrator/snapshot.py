@@ -23,7 +23,8 @@ def project_snapshot(config: ReAgentConfig, lock: threading.Lock) -> Iterator[Re
         isolated = copy.deepcopy(config)
         with lock:
             shutil.copytree(original, scratch, dirs_exist_ok=True, symlinks=True,
-                            ignore=shutil.ignore_patterns(".git", ".venv", "build", "reports", "__pycache__"))
+                            ignore=shutil.ignore_patterns(".git", ".venv", "build", "reports", "__pycache__",
+                                                         "*.coordinator.lock"))
             _remap_links(scratch, original)
             if config.project_profile.compilation_database:
                 database = json.loads(Path(config.project_profile.compilation_database).read_text(encoding="utf-8"))

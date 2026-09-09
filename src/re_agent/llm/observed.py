@@ -67,6 +67,9 @@ class ObservedProvider:
                 context.check()
             return response
         except Exception as exc:
+            status = getattr(exc, "status_code", None)
+            if context and status in (401, 403):
+                context.fail("authentication", str(exc))
             event["error"] = str(exc)
             raise
         finally:

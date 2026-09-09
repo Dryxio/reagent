@@ -51,6 +51,8 @@ def build_parser() -> argparse.ArgumentParser:
     rev_p.add_argument("--address", help="Single function address to reverse")
     rev_p.add_argument("--class", dest="class_name", help="Class name for class-level reversal")
     rev_p.add_argument("--max-functions", type=int, default=None, help="Max functions per class")
+    rev_p.add_argument("--max-parallel-functions", type=int, default=None, help="Concurrent functions (1-32)")
+    rev_p.add_argument("--max-parallel-validations", type=int, default=None, help="Concurrent isolated validations")
     rev_p.add_argument("--max-rounds", type=int, default=None, help="Max review rounds per function")
     rev_p.add_argument("--dry-run", action="store_true", help="Show plan without executing")
     rev_p.add_argument("--skip-parity", action="store_true", help="Skip parity check after PASS")

@@ -28,6 +28,10 @@ def cmd_reverse(args: argparse.Namespace) -> int:
     if args.skip_parity:
         config.parity.enabled = False
 
+    for name in ("max_parallel_functions", "max_parallel_validations"):
+        value = getattr(args, name, None)
+        if value is not None:
+            setattr(config.orchestrator, name, value)
     validate_config(config)
 
     from re_agent.core.identity import project_fingerprint
@@ -57,92 +61,113 @@ def cmd_reverse(args: argparse.Namespace) -> int:
     from re_agent.core.session import Session
     from re_agent.llm.registry import create_provider
 
-    reverser_llm = create_provider(config.agents.reverser or config.llm)
-    checker_llm = create_provider(config.agents.checker or config.llm)
+    # Parallel jobs construct their own providers; no unused shared clients.
+    reverser_llm = checker_llm = None
+    if args.address or config.orchestrator.max_parallel_functions == 1:
+        reverser_llm = create_provider(config.agents.reverser or config.llm)
+        checker_llm = create_provider(config.agents.checker or config.llm)
     backend = create_backend(config.backend)
     session = Session(config.output.session_file)
-    session.bind(project_fingerprint(config))
+    from contextlib import ExitStack
 
-    if args.address:
-        from re_agent.orchestrator.single import reverse_single
+    with session.coordinator(), ExitStack() as resources:
+        for provider in (reverser_llm, checker_llm):
+            close = getattr(provider, "close", None)
+            if callable(close):
+                resources.callback(close)
+        session.bind(project_fingerprint(config))
 
-        class_name = args.class_name or ""
-        function_name = ""
+        if args.address:
+            from re_agent.orchestrator.single import reverse_single
 
-        dec = backend.decompile(args.address)
-        if dec.name:
-            resolved_class, _, function_name = dec.name.rpartition("::")
-            function_name = function_name or dec.name
-            class_name = class_name or resolved_class
-        # Project hooks provide identity when legacy decompilation uses FUN_* names.
-        from re_agent.parity.source_indexer import SourceIndexer
-        from re_agent.utils.address import normalize_address
+            class_name = args.class_name or ""
+            function_name = ""
 
-        source_index = SourceIndexer(Path(config.project_profile.source_root), config.project_profile)
-        for address, (hook_class, hook_name) in source_index.hook_address_index.items():
-            if normalize_address(address) == normalize_address(args.address):
-                class_name = hook_class or class_name
-                function_name = hook_name
-                break
+            dec = backend.decompile(args.address)
+            if dec.name:
+                resolved_class, _, function_name = dec.name.rpartition("::")
+                function_name = function_name or dec.name
+                class_name = class_name or resolved_class
+            # Project hooks provide identity when legacy decompilation uses FUN_* names.
+            from re_agent.parity.source_indexer import SourceIndexer
+            from re_agent.utils.address import normalize_address
 
-        target = FunctionTarget(
-            address=args.address,
-            class_name=class_name,
-            function_name=function_name,
-        )
-        result = reverse_single(
-            target,
-            config,
-            backend,
-            reverser_llm,
-            checker_llm=checker_llm,
-            session=session,
-            indexer=source_index,
-        )
-        from re_agent.reports.formatter import results_to_json, results_to_markdown
+            source_index = SourceIndexer(Path(config.project_profile.source_root), config.project_profile)
+            for address, (hook_class, hook_name) in source_index.hook_address_index.items():
+                if normalize_address(address) == normalize_address(args.address):
+                    class_name = hook_class or class_name
+                    function_name = hook_name
+                    break
 
-        if config.output.format == "json":
-            print(results_to_json([result]))
-        elif config.output.format == "markdown":
-            print(results_to_markdown([result]))
-        else:
-            print(format_result(result))
-        return 0 if result.success else 1
-
-    if args.class_name or plan is not None:
-        from re_agent.orchestrator.class_runner import reverse_class
-
-        if plan is not None:
-            from re_agent.orchestrator.batch_runner import reverse_manifest
-
-            results = reverse_manifest(plan, config, backend, reverser_llm, session,
-                                       args.max_functions, checker_llm)
-        else:
-            results = reverse_class(
-                class_name=args.class_name,
-                config=config,
-                backend=backend,
-                llm=reverser_llm,
+            target = FunctionTarget(
+                address=args.address,
+                class_name=class_name,
+                function_name=function_name,
+            )
+            assert reverser_llm is not None
+            result = reverse_single(
+                target,
+                config,
+                backend,
+                reverser_llm,
                 checker_llm=checker_llm,
                 session=session,
-                max_functions=args.max_functions,
+                indexer=source_index,
             )
-        from re_agent.reports.formatter import results_to_json, results_to_markdown
+            from re_agent.reports.formatter import results_to_json, results_to_markdown
 
-        if config.output.format == "json":
-            print(results_to_json(results))
-        elif config.output.format == "markdown":
-            print(results_to_markdown(results))
-        else:
-            for result in results:
+            if config.output.format == "json":
+                print(results_to_json([result]))
+            elif config.output.format == "markdown":
+                print(results_to_markdown([result]))
+            else:
                 print(format_result(result))
-        passed = sum(1 for r in results if r.success)
-        total = len(results)
-        print(f"Results: {passed}/{total} passed", file=sys.stderr)
-        return 0 if passed == total else 1
+            return 0 if result.success else 1
 
-    print("Error: specify --address, --class, or --manifest", file=sys.stderr)
-    return 1
+        if args.class_name or plan is not None:
+            from re_agent.orchestrator.class_runner import reverse_class
+
+            if plan is not None:
+                from re_agent.orchestrator.batch_runner import reverse_manifest
+
+                results = reverse_manifest(plan, config, backend, reverser_llm, session,
+                                           args.max_functions, checker_llm, provider_factory=create_provider)
+            else:
+                results = reverse_class(
+                    class_name=args.class_name,
+                    config=config,
+                    backend=backend,
+                    llm=reverser_llm,
+                    checker_llm=checker_llm,
+                    session=session,
+                    max_functions=args.max_functions,
+                    provider_factory=create_provider,
+                )
+            from re_agent.reports.formatter import results_to_json, results_to_markdown
+
+            if config.output.format == "json":
+                print(results_to_json(results))
+            elif config.output.format == "markdown":
+                print(results_to_markdown(results))
+            else:
+                for result in results:
+                    print(format_result(result))
+            passed = sum(1 for r in results if r.success)
+            total = len(results)
+            print(f"Results: {passed}/{total} passed", file=sys.stderr)
+            import json
+
+            status_path = session.path.with_suffix(session.path.suffix + ".execution.json")
+            if config.orchestrator.max_parallel_functions > 1 and status_path.exists():
+                phase = json.loads(status_path.read_text(encoding="utf-8")).get("phase")
+                if phase == "stopped":
+                    return 130
+                if phase == "failed":
+                    return 1
+            return 0 if passed == total else 1
+
+        print("Error: specify --address, --class, or --manifest", file=sys.stderr)
+        return 1
 
 
 def _dry_run(args: argparse.Namespace, config: ReAgentConfig) -> int:

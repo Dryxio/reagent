@@ -10,6 +10,7 @@ from re_agent.core.session import Session
 from re_agent.core.target_plan import TargetPlan
 from re_agent.llm.protocol import LLMProvider
 from re_agent.orchestrator.class_runner import reverse_class
+from re_agent.orchestrator.parallel import ProviderFactory
 
 
 class _ManifestBackend:
@@ -31,9 +32,11 @@ class _ManifestBackend:
 
 
 def reverse_manifest(plan: TargetPlan, config: ReAgentConfig, backend: REBackend,
-                     llm: LLMProvider, session: Session, max_functions: int | None = None,
-                     checker_llm: LLMProvider | None = None) -> list[ReversalResult]:
+                     llm: LLMProvider | None, session: Session, max_functions: int | None = None,
+                     checker_llm: LLMProvider | None = None, *,
+                     provider_factory: ProviderFactory | None = None) -> list[ReversalResult]:
     return reverse_class(
         "", config, cast(REBackend, _ManifestBackend(backend, plan)), llm, session,
         max_functions, checker_llm, target_addresses={target.address for target in plan.functions},
+        provider_factory=provider_factory,
     )

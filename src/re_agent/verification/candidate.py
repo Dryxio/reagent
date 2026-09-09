@@ -63,7 +63,8 @@ def create_candidate_overlay(
                 overlay_root,
                 dirs_exist_ok=True,
                 symlinks=True,
-                ignore=shutil.ignore_patterns(".git", ".venv", "build", "reports", "__pycache__", "*.pyc"),
+                ignore=shutil.ignore_patterns(".git", ".venv", "build", "reports", "__pycache__",
+                                               "*.pyc", "*.coordinator.lock"),
             )
             _remap_links(overlay_root, project_root)
         else:
