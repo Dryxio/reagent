@@ -22,17 +22,17 @@ def test_large_unicode_prompt_uses_utf8_stdin(tmp_path, monkeypatch):
         "sys.stdout.buffer.write('\u8a3a\u65ad \u2713'.encode('utf-8'))\n",
         encoding="utf-8",
     )
-    run = subprocess.run
+    from re_agent.utils.process import run_process
+    run = run_process
     output_paths = []
 
     def invoke(args, **kwargs):
         assert sum(len(arg) for arg in args) < 4096
-        assert kwargs.get("encoding") == "utf-8"
-        assert kwargs.get("input") == expected
+        assert kwargs.get("input_text") == expected
         output_paths.append(Path(args[args.index('--output-last-message') + 1]))
         return run([sys.executable, str(fake), *args[1:]], **kwargs)
 
-    monkeypatch.setattr("re_agent.llm.codex_cli.subprocess.run", invoke)
+    monkeypatch.setattr("re_agent.llm.codex_cli.run_process", invoke)
     content = "\u65e5\u672c\u8a9e evidence & | > \" ' " * 5000
     expected = "[USER]\n" + content.strip()
     assert CodexCLIProvider().send([Message(role="user", content=content)]) == expected
@@ -53,7 +53,7 @@ def test_cli_failures_preserve_diagnostics_and_clean_output(monkeypatch, failure
             args, 1, "The selected model requires a newer version of Codex. \u8a3a\u65ad"
         )
 
-    monkeypatch.setattr("re_agent.llm.codex_cli.subprocess.run", invoke)
+    monkeypatch.setattr("re_agent.llm.codex_cli.run_process", invoke)
     match = {"model": "requires a newer version", "timeout": "timed out after 7s", "missing": "CLI not found"}
     with pytest.raises(RuntimeError, match=match[failure]):
         CodexCLIProvider(timeout_s=7).send([Message(role="user", content="test")])

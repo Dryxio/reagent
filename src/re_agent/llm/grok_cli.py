@@ -44,6 +44,9 @@ class GrokCLIProvider:
         self._conversations[conversation_id] = (system, True)
         return text
 
+    def close(self) -> None:
+        self._workspace.cleanup()
+
     def send(self, messages: list[Message], **kwargs: Any) -> str:
         system = "\n\n".join(m.content for m in messages if m.role == "system")
         prompt = "\n\n".join(f"[{m.role.upper()}]\n{m.content}" for m in messages if m.role != "system")

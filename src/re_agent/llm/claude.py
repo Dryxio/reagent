@@ -40,6 +40,9 @@ class ClaudeProvider:
 
     # -- LLMProvider interface ------------------------------------------------
 
+    def close(self) -> None:
+        self._client.close()
+
     def send(self, messages: list[Message], **kwargs: Any) -> str:
         """Send messages to Claude and return the assistant response text."""
         system_text: str | None = None

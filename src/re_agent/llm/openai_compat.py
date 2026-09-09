@@ -46,6 +46,9 @@ class OpenAIProvider:
 
     # -- LLMProvider interface ------------------------------------------------
 
+    def close(self) -> None:
+        self._client.close()
+
     def send(self, messages: list[Message], **kwargs: Any) -> str:
         """Send messages via the chat completions API and return the response."""
         api_messages: list[dict[str, str]] = [{"role": m.role, "content": m.content} for m in messages]

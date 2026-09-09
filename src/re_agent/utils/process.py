@@ -80,6 +80,8 @@ def run_process(
             stdout=stdout,
             stderr=stderr,
             text=True,
+            encoding="utf-8",
+            creationflags=int(getattr(subprocess, "CREATE_NO_WINDOW", 0)) if os.name == "nt" else 0,
             start_new_session=os.name != "nt",
         )
         try:
