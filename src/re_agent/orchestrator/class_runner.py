@@ -119,6 +119,8 @@ def reverse_class(
     session: Session | None = None,
     max_functions: int | None = None,
     checker_llm: LLMProvider | None = None,
+    *,
+    target_addresses: set[str] | None = None,
 ) -> list[ReversalResult]:
     """Validate a class cumulatively in an isolated scratch project."""
     if not (config.validation.copy_project and config.orchestrator.cumulative_validation):
@@ -151,9 +153,15 @@ def reverse_class(
         from re_agent.core.models import FunctionTarget
 
         for entry in session.get_all_functions():
-            if entry.get("success") and entry.get("class_name") == class_name and entry.get("code"):
+            from re_agent.utils.address import normalize_address
+
+            selected = (normalize_address(entry["address"]) in target_addresses if target_addresses is not None
+                        else entry.get("class_name") == class_name)
+            if entry.get("success") and selected and entry.get("code"):
                 _promote(
-                    ReversalResult(FunctionTarget(entry["address"], class_name, entry["function_name"]), entry["code"]),
+                    ReversalResult(
+                        FunctionTarget(entry["address"], entry["class_name"], entry["function_name"]), entry["code"]
+                    ),
                     isolated,
                 )
         return _reverse_class(class_name, isolated, backend, llm, session, max_functions, checker_llm)

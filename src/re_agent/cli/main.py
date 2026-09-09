@@ -34,6 +34,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     # reverse
     rev_p = sub.add_parser("reverse", help="Reverse engineer functions")
+    rev_p.add_argument("--manifest", help="Target manifest produced by plan")
     rev_p.add_argument("--address", help="Single function address to reverse")
     rev_p.add_argument("--class", dest="class_name", help="Class name for class-level reversal")
     rev_p.add_argument("--max-functions", type=int, default=None, help="Max functions per class")

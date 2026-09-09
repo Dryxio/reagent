@@ -277,3 +277,13 @@ records. Inspect gaps before using a manifest. Changing fingerprinted inputs
 requires regenerating the plan. Backend CLI configurations without local export
 content cannot fingerprint changes to an external analysis database; regenerate
 after changes to that database.
+
+
+Run a reviewed manifest with `re-agent reverse --manifest group.json --max-functions 5`.
+`--dry-run` checks input identity and displays the inventory without model calls.
+Manifest mode is exclusive with `--address` and `--class`. The existing selector
+orders only manifest members using backend dependencies; external callees are
+never added automatically. Existing retry limits, acceptance rules, sessions,
+and cumulative scratch validation apply across class boundaries. A function
+limit caps attempts in this invocation, not the total inventory. As with class
+runs, cumulative source promotion requires unique existing source definitions.
