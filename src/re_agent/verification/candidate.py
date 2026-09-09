@@ -14,6 +14,17 @@ from re_agent.config.schema import ValidationConfig
 from re_agent.core.models import FunctionTarget, SourceMatch, ValidationVerdict, Verdict
 from re_agent.utils.process import run_process
 
+_NON_CODE = re.compile(
+    r'//[^\n]*|/\*[\s\S]*?\*/|R"(?P<delimiter>[^ ()\\\t\r\n]{0,16})\([\s\S]*?\)(?P=delimiter)"'
+    r'|"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\''
+)
+
+
+def unresolved_placeholders(code: str) -> list[str]:
+    """Find executable unrecovered-jump placeholders, ignoring comments/literals."""
+    tokens = _NON_CODE.sub(" ", code)
+    return sorted(set(re.findall(r"\bUNRECOVERED_JUMPTABLE(?:_\w+)?\b", tokens)))
+
 
 def extract_candidate_body(code: str) -> str:
     """Extract the outer C++ body from generated code."""

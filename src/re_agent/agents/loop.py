@@ -25,7 +25,7 @@ from re_agent.core.session import Session
 from re_agent.llm.observed import CallBudget, ObservedProvider
 from re_agent.llm.protocol import LLMProvider
 from re_agent.parity.source_indexer import SourceIndexer
-from re_agent.verification.candidate import extract_candidate_body
+from re_agent.verification.candidate import extract_candidate_body, unresolved_placeholders
 from re_agent.verification.objective import verify_candidate
 
 
@@ -137,6 +137,9 @@ def run_fix_loop(
                 extract_candidate_body(code)
             except ValueError as exc:
                 preflight_error = str(exc)
+        placeholders = unresolved_placeholders(code)
+        if placeholders:
+            preflight_error = "Unresolved decompiler placeholders: " + ", ".join(placeholders)
         if preflight_error:
             checker.last_prompt = ""
             checker.last_response = ""
@@ -144,7 +147,9 @@ def run_fix_loop(
                 verdict=Verdict.FAIL,
                 summary="Local candidate preflight failed; model review skipped",
                 issues=[preflight_error],
-                fix_instructions=["Return exactly one complete function definition without helper definitions."],
+                fix_instructions=[
+                    "Resolve the reported issue using binary evidence; do not invent declarations for unknown targets."
+                ],
             )
         else:
             verdict = checker.check(code, target)
