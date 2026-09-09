@@ -54,3 +54,20 @@ def test_argument_yaml_roundtrip(tmp_path: Path) -> None:
     path = tmp_path / "config.yaml"
     path.write_text('validation:\n  build_commands:\n    - [python, check.py, "{candidate_file}"]\n', encoding="utf-8")
     assert load_config(path).validation.build_commands == [["python", "check.py", "{candidate_file}"]]
+
+
+def test_doctor_reports_shell_requirement_only_for_strings(tmp_path: Path, capsys) -> None:
+    from re_agent.cli.main import main
+
+    path = tmp_path / "config.json"
+    config = {"backend": {"type": "stub"}, "project_profile": {"source_root": str(tmp_path)},
+              "validation": {"trust_configured_commands": True, "build_commands": [[sys.executable, "-c", "pass"]]}}
+    path.write_text(json.dumps(config), encoding="utf-8")
+    with patch("re_agent.cli.cmd_doctor.shutil.which", return_value=None):
+        assert main(["--config", str(path), "doctor"]) == 0
+        capsys.readouterr()
+        config["validation"]["build_commands"] = ["true"]
+        path.write_text(json.dumps(config), encoding="utf-8")
+        assert main(["--config", str(path), "doctor"]) == 1
+        report = json.loads(capsys.readouterr().out)
+        assert any(check["check"] == "validation shell" and not check["passed"] for check in report["checks"])

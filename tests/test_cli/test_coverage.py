@@ -59,3 +59,14 @@ def test_status_cli_preserves_stale_session(tmp_path: Path, capsys) -> None:
     report = json.loads(capsys.readouterr().out)
     assert report["manifest_current"] is False
     assert session.path.read_bytes() == before
+
+
+def test_invalid_differential_cases_preserve_prior_checks(tmp_path: Path) -> None:
+    cases = tmp_path / "cases.json"
+    cases.write_text("{broken", encoding="utf-8")
+    verdict = validate_candidate(ValidationConfig(
+        build_commands=[[sys.executable, "-c", "pass", "{candidate_file}"]],
+        differential_cases_file=str(cases),
+    ), tmp_path / "candidate.cpp", None)
+    assert [(check["kind"], check["verdict"]) for check in verdict.checks] == [
+        ("build", "PASS"), ("differential", "FAIL")]

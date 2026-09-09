@@ -312,15 +312,7 @@ class EvidenceGap:
             raise ValueError("Evidence gap requires function, reason, origin, and kind strings")
         if value["kind"] not in {"unavailable", "unsupported", "query_failed", "unresolved_call", "limit"}:
             raise ValueError("Unknown evidence gap kind")
-        from re_agent.utils.address import normalize_address
+        from re_agent.utils.address import checked_address
 
-        def address(raw: object) -> str:
-            if not isinstance(raw, str) or not raw.strip():
-                raise ValueError("Evidence gap address must be hexadecimal")
-            normalized = normalize_address(raw)
-            if not all(char in "0123456789abcdef" for char in normalized):
-                raise ValueError("Evidence gap address must be hexadecimal")
-            return normalized
-
-        return cls(address(value["function"]), value["reason"], value["origin"], value["kind"],
-                   address(value["site"]) if value.get("site") is not None else None)
+        return cls(checked_address(value["function"]), value["reason"], value["origin"], value["kind"],
+                   checked_address(value["site"]) if value.get("site") is not None else None)

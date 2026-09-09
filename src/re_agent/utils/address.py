@@ -34,3 +34,13 @@ def format_address(addr: str) -> str:
     if not cleaned.startswith("0x"):
         cleaned = "0x" + cleaned
     return cleaned
+
+
+
+def checked_address(value: object) -> str:
+    """Validate external hexadecimal address fields without truncating their width."""
+    import re
+
+    if not isinstance(value, str) or re.fullmatch(r"(?:0[xX])?[0-9a-fA-F]+", value.strip()) is None:
+        raise ValueError(f"Invalid hexadecimal address: {value!r}")
+    return normalize_address(value)

@@ -9,17 +9,8 @@ from typing import Any
 
 from re_agent.backend.protocol import REBackend
 from re_agent.core.models import EvidenceGap, FunctionTarget
-from re_agent.utils.address import normalize_address
+from re_agent.utils.address import checked_address
 from re_agent.utils.storage import atomic_json
-
-
-def checked_address(value: object) -> str:
-    if not isinstance(value, str) or not value.strip():
-        raise ValueError("Target address must be a hexadecimal string")
-    result = normalize_address(value)
-    if not all(char in "0123456789abcdef" for char in result):
-        raise ValueError(f"Invalid hexadecimal address: {value}")
-    return result
 
 
 @dataclass
@@ -39,7 +30,7 @@ class TargetPlan:
     @classmethod
     def load(cls, path: Path) -> TargetPlan:
         value = json.loads(path.read_text(encoding="utf-8"))
-        if not isinstance(value, dict) or value.get("schema_version") != 1:
+        if not isinstance(value, dict) or type(value.get("schema_version")) is not int or value["schema_version"] != 1:
             raise ValueError("Unsupported target manifest schema")
         identity = value.get("identity")
         if not isinstance(identity, str) or len(identity) != 64 or any(c not in "0123456789abcdef" for c in identity):
@@ -83,6 +74,8 @@ class TargetPlan:
         ):
             raise ValueError("Manifest evidence must map selected addresses to objects")
         plan.evidence = {checked_address(key): record for key, record in evidence.items()}
+        if len(plan.evidence) != len(evidence):
+            raise ValueError("Duplicate evidence addresses after normalization")
         return plan
 
 
@@ -129,7 +122,13 @@ def build_plan(backend: REBackend, seeds: list[str], identity: str, *,
                     if not isinstance(payload, dict):
                         raise ValueError("Context must be an object")
                     record["context"] = payload
-                    plan.gaps.extend(EvidenceGap.from_dict(gap) for gap in payload.get("gaps", []))
+                    raw_gaps = payload.get("gaps", [])
+                    if not isinstance(raw_gaps, list):
+                        raise ValueError("Context gaps must be a list")
+                    gaps = [EvidenceGap.from_dict(gap) for gap in raw_gaps]
+                    if any(gap.function != address for gap in gaps):
+                        raise ValueError("Context gap function does not match selected address")
+                    plan.gaps.extend(gaps)
             except (OSError, ValueError, RuntimeError, NotImplementedError, AttributeError) as exc:
                 plan.gaps.append(EvidenceGap(address, str(exc), "context", "query_failed"))
         else:

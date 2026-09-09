@@ -44,3 +44,27 @@ def test_invalid_gap_rejected(update: dict) -> None:
     gap.update(update)
     with pytest.raises(ValueError):
         EvidenceGap.from_dict(gap)
+
+
+@pytest.mark.parametrize("address", ["0x", "space:100", "", "-1", "../100"])
+def test_external_address_validation(address: str) -> None:
+    from re_agent.utils.address import checked_address
+    with pytest.raises(ValueError):
+        checked_address(address)
+
+
+def test_missing_call_lists_can_be_ingested(tmp_path: Path) -> None:
+    (tmp_path / "140001000.json").write_text('{"address":"140001000"}', encoding="utf-8")
+    context = GhidraExportsBackend(str(tmp_path)).get_context("140001000")
+    graph = KnowledgeGraph(tmp_path / "graph.json")
+    graph.ingest_context(context.content)
+    assert len(graph.gaps) == 2
+    assert graph.edges == []
+
+
+@pytest.mark.parametrize("gaps", [None, {}, [{"function": "200", "kind": "unavailable",
+                                              "origin": "fixture", "reason": "wrong function"}]])
+def test_invalid_export_gaps_fail_clearly(tmp_path: Path, gaps: object) -> None:
+    (tmp_path / "00000100.json").write_text(json.dumps({"address": "100", "gaps": gaps}), encoding="utf-8")
+    with pytest.raises(ValueError):
+        GhidraExportsBackend(str(tmp_path)).get_context("100")

@@ -180,9 +180,14 @@ def validate_candidate(
     if config.differential_cases_file:
         from re_agent.verification.differential import compare_commands
 
-        cases = json.loads(Path(config.differential_cases_file).read_text(encoding="utf-8"))
+        try:
+            cases = json.loads(Path(config.differential_cases_file).read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            checks.append({"kind": "differential", "verdict": "FAIL", "detail": str(exc)})
+            return _failed("Could not read differential cases", candidate_file, findings, checks)
         if not isinstance(cases, list):
-            return _failed("Differential cases must be a JSON array", candidate_file)
+            checks.append({"kind": "differential", "verdict": "FAIL", "detail": "Cases must be a JSON array"})
+            return _failed("Differential cases must be a JSON array", candidate_file, findings, checks)
 
         def expand_args(args: list[str]) -> list[str]:
             values = {
