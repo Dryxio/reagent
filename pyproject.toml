@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "auto-re-agent"
-version = "0.3.0"
+version = "0.4.0"
 description = "Evidence-driven autonomous reverse-engineering agent with agentic Ghidra analysis, independent LLM verification, candidate validation, and parity checks"
 readme = "README.md"
 license = "MIT"

@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.4.0 — 2026-09-09
+
+### Portable validation
+
+- Accept argument arrays for build, test, and runtime gates. Execute them directly on Windows and POSIX, expanding candidate/source/overlay placeholders as literal argument data. This addresses native Windows validation in [#11](https://github.com/Dryxio/reagent/issues/11).
+- Preserve legacy POSIX shell strings. Windows configurations must migrate to arrays; `doctor` now reports a missing `/bin/sh` when strings are configured.
+- Return explicit failures when commands cannot start, and retain per-command build/test/runtime/differential outcomes in reports and sessions.
+- Add Windows Python 3.12 CI alongside Linux and macOS coverage.
+
+### Bounded function workflows
+
+- Add `plan` to collect seed functions and direct callees within explicit depth and function limits, without model calls.
+- Add `reverse --manifest` with dependency ordering, bounded retries, cross-class resume, and cumulative validation in disposable project copies.
+- Add `evidence --manifest` for linked JSON packets and searchable TSV indexes, and `status --manifest` for inventory coverage and stale-result reporting.
+- Preserve structured evidence gaps and full context bundles. Keep generated manifests loadable when backend exceptions have empty or whitespace-only messages.
+
+### Source and provider fixes
+
+- Normalize CRLF source offsets from Clang to match the source indexer's character offsets.
+- Avoid estimating machine basic-block counts from C++ keywords in CFG verification; retain checks for wholesale removal of branching.
+- Send Codex CLI prompts through UTF-8 stdin to support large prompts, and preserve conversation history when requests fail.
+
+### Compatibility and limits
+
+- Existing POSIX string commands remain supported. Arrays do not expand shell syntax or environment-variable references; use `{candidate_file}`, `{overlay_root}`, and `{source_file}` placeholders.
+- Project-owned commands still require explicit trust before their successful exit codes count as validation proof under the configured policy.
+- Manifest coverage describes only the selected inventory. It does not establish whole-program coverage or semantic equivalence.
+
 ## 0.3.0 — 2026-09-04
 
 ### Autonomous repair and validation

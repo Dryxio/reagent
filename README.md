@@ -52,22 +52,22 @@ independent conditions:
 
 This is conservative verification, not a proof of semantic equivalence.
 
-## New in 0.3.0
+## New in 0.4.0
 
-Build, test, runtime, differential and semantic-rule failures now return to the
-repair loop. Class validation can compose accepted functions in an isolated
-scratch project (`copy_project: true`, `cumulative_validation: true`).
+Build, test, and runtime validation now support argument arrays that execute
+directly on Windows and POSIX. On native Windows, convert shell strings to arrays;
+legacy strings still require `/bin/sh`. `re-agent doctor` reports a missing shell.
 
-- `re-agent doctor --address ADDR` checks setup before model calls.
-- `re-agent benchmark --manifest cases.json --output result.json` compares JSON harnesses.
-- `backend.type: ghidra-json` reads structured exports directly using `backend.export_dir`
-  and an optional `backend.address_map`; it requires no bridge executable.
-- `project_profile.compilation_database` enables optional Clang AST indexing.
-- `orchestrator.max_llm_calls_per_function` bounds all reverser/checker calls together.
-- Sessions retain round diagnostics and archive completed state when fingerprinted inputs change.
+- `re-agent plan` builds bounded function manifests without model calls.
+- `re-agent reverse --manifest` reconstructs selected functions across classes,
+  with dependency ordering and cumulative validation in an isolated project copy.
+- `re-agent evidence --manifest` exports stored evidence into linked JSON packets and TSV indexes.
+- `re-agent status --manifest` reports coverage, stale results, and individual validation checks.
+- Evidence gaps remain explicit, and manifests stay readable after backend errors with empty messages.
+- Clang indexing handles CRLF offsets; Codex CLI requests use UTF-8 stdin for large prompts.
 
-See [migration and configuration](docs/configuration.md), [release validation](docs/validation-0.3.md),
-[the GTA differential adapters](examples/gta_timer/README.md), and [the changelog](CHANGELOG.md).
+See [migration and configuration](docs/configuration.md#portable-validation-commands)
+and [the changelog](CHANGELOG.md).
 
 ## Manual setup
 
@@ -93,13 +93,13 @@ Prefer to install it yourself? Expand the instructions below.
 Install the agent and its Ghidra query bridge from PyPI:
 
 ```bash
-python3 -m pip install --upgrade "auto-re-agent[ghidra-bridge]>=0.3.0"
+python3 -m pip install --upgrade "auto-re-agent[ghidra-bridge]>=0.4.0"
 ```
 
 For headless Ghidra exports, install the bridge with its PyGhidra extra:
 
 ```bash
-python3 -m pip install --upgrade "auto-re-agent[headless]>=0.3.0"
+python3 -m pip install --upgrade "auto-re-agent[headless]>=0.4.0"
 ```
 
 To install the latest development versions directly from GitHub instead:
@@ -184,14 +184,14 @@ validation:
   copy_project: true
   project_root: .
   build_commands:
-    - cmake -S . -B build
-    - cmake --build build
+    - [cmake, -S, ., -B, build]
+    - [cmake, --build, build]
   test_commands:
-    - ctest --test-dir build --output-on-failure
+    - [ctest, --test-dir, build, --output-on-failure]
   require_build: true
   require_tests: true
   require_verified: true
-  # This explicitly attests that the project-owned shell commands above are
+  # This explicitly attests that the project-owned commands above are
   # meaningful validation gates. Leave false for untrusted commands.
   trust_configured_commands: true
   keep_project_copy: false
@@ -489,8 +489,8 @@ cost depends on the selected models, evidence volume, and target complexity.
 - candidate generation does not overwrite the original source tree;
 - review rounds, evidence actions, and per-function attempts are bounded;
 - prompt/response logs include internal evidence-loop calls in unique run directories;
-- configured validation commands execute through `/bin/sh` and should only be
-  trusted when they are controlled by the project owner;
+- validation argument arrays run directly on Windows and POSIX; shell strings
+  require `/bin/sh`. Commands should only be trusted when controlled by the project owner;
 - structural and parity checks catch useful mismatches but do not prove binary
   equivalence;
 - real Ghidra/PyGhidra integration depends on the local Ghidra project and has
