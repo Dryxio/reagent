@@ -95,6 +95,7 @@ def _result_to_dict(result: ReversalResult) -> dict[str, Any]:
         d["validation_verdict"] = result.validation_verdict.verdict.value
         d["validation_summary"] = result.validation_verdict.summary
         d["validation_findings"] = result.validation_verdict.findings
+        d["validation_checks"] = result.validation_verdict.checks
         d["candidate_overlay"] = result.validation_verdict.overlay_file
     if result.parity_status:
         d["parity_status"] = result.parity_status.value

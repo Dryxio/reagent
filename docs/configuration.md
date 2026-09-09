@@ -298,3 +298,20 @@ backend, LLM, or configuration file and makes no claim about current binary stat
 Use a new or empty destination. TSV cells escape backslashes, tabs, carriage
 returns, and newlines. JSON packets retain full stored records and any truncation
 markers. The fingerprint and source context origin identify the evidence snapshot.
+
+
+### Manifest coverage
+
+`re-agent status --manifest group.json --format json` reconciles every selected
+function with existing session results. Primary statuses are `unattempted`,
+`attempted` (checkpoint only), `accepted`, `failed`, and `stale`; their counts sum
+to the planned inventory. Input mismatch marks recorded work stale. This read-only
+command does not rebind or archive the session. Results outside the manifest do
+not affect coverage. External call edges and evidence gaps come from the snapshot.
+
+Checker, objective, aggregate candidate-validation, and parity verdicts remain
+separate. New validation results also record each executed build/test/runtime/
+differential check in order. Missing checks mean no recorded execution, not a
+pass; older sessions retain their aggregate verdict without invented details.
+Acceptance means the configured policy accepted the candidate. It is not proof
+of equivalence, and selected-inventory coverage is not whole-program coverage.

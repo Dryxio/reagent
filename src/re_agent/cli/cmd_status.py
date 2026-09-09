@@ -13,6 +13,17 @@ from re_agent.reports.tracker import ProgressTracker
 def cmd_status(args: argparse.Namespace) -> int:
     config = load_config(Path(args.config))
     session = Session(config.output.session_file)
+    if getattr(args, "manifest", None):
+        if args.class_name:
+            raise ValueError("--manifest cannot be combined with --class")
+        from re_agent.core.identity import project_fingerprint
+        from re_agent.core.target_plan import TargetPlan
+        from re_agent.reports.coverage import format_coverage, manifest_coverage
+
+        report = manifest_coverage(TargetPlan.load(Path(args.manifest)), session, project_fingerprint(config))
+        print(json.dumps(report, indent=2) if args.format == "json"
+              else format_coverage(report, markdown=args.format == "markdown"))
+        return 0
     tracker = ProgressTracker(session)
 
     if args.format == "json":

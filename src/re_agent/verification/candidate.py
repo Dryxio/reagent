@@ -151,6 +151,7 @@ def validate_candidate(
         }
     )
     findings: list[str] = []
+    checks: list[dict[str, str]] = []
     for kind, command in commands:
         expanded = (
             ["/bin/sh", "-lc", _expand_shell(command)] if isinstance(command, str)
@@ -164,13 +165,17 @@ def validate_candidate(
                 timeout_s=config.command_timeout_s,
             )
         except OSError as exc:
-            return _failed(f"{kind} command could not start: {exc}", candidate_file, findings)
+            checks.append({"kind": kind, "verdict": "FAIL", "detail": str(exc)})
+            return _failed(f"{kind} command could not start: {exc}", candidate_file, findings, checks)
         except subprocess.TimeoutExpired:
-            return _failed(f"{kind} command timed out: {command}", candidate_file, findings)
+            checks.append({"kind": kind, "verdict": "FAIL", "detail": "timed out"})
+            return _failed(f"{kind} command timed out: {command}", candidate_file, findings, checks)
         tail = "\n".join((proc.stdout + proc.stderr).splitlines()[-20:])
         findings.append(f"{kind}: {command} -> exit {proc.returncode}\n{tail}".rstrip())
+        checks.append({"kind": kind, "verdict": "PASS" if proc.returncode == 0 else "FAIL",
+                       "detail": f"exit {proc.returncode}"})
         if proc.returncode != 0:
-            return _failed(f"Candidate {kind} gate failed", candidate_file, findings)
+            return _failed(f"Candidate {kind} gate failed", candidate_file, findings, checks)
 
     if config.differential_cases_file:
         from re_agent.verification.differential import compare_commands
@@ -198,9 +203,11 @@ def validate_candidate(
             Path(_working_directory(config, candidate_file)),
             config.command_timeout_s,
         )
+        checks.append({"kind": "differential", "verdict": "PASS" if comparison.passed else "FAIL",
+                       "detail": f"{comparison.cases_run} cases"})
         findings.extend(comparison.findings)
         if not comparison.passed:
-            return _failed("Candidate differential gate failed", candidate_file, findings)
+            return _failed("Candidate differential gate failed", candidate_file, findings, checks)
 
     if not config.trust_configured_commands:
         return ValidationVerdict(
@@ -210,6 +217,7 @@ def validate_candidate(
                 "validation.trust_configured_commands is explicitly enabled"
             ),
             findings=findings,
+            checks=checks,
             overlay_file=str(candidate_file),
         )
 
@@ -217,6 +225,7 @@ def validate_candidate(
         verdict=Verdict.PASS,
         summary="All configured candidate validation gates passed",
         findings=findings,
+        checks=checks,
         overlay_file=str(candidate_file),
     )
 
@@ -284,11 +293,13 @@ def _failed(
     summary: str,
     candidate_file: Path,
     findings: list[str] | None = None,
+    checks: list[dict[str, str]] | None = None,
 ) -> ValidationVerdict:
     return ValidationVerdict(
         verdict=Verdict.FAIL,
         summary=summary,
         findings=findings or [],
+        checks=checks or [],
         overlay_file=str(candidate_file),
     )
 

@@ -57,6 +57,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     # status
     stat_p = sub.add_parser("status", help="Show reversal progress")
+    stat_p.add_argument("--manifest", help="Report coverage of a planned function group")
     stat_p.add_argument("--class", dest="class_name", help="Filter by class")
     stat_p.add_argument("--format", choices=["text", "json", "markdown"], default="text")
 

@@ -81,6 +81,7 @@ class ValidationVerdict:
     summary: str
     findings: list[str] = field(default_factory=list)
     overlay_file: str | None = None
+    checks: list[dict[str, str]] = field(default_factory=list)
 
 
 @dataclass
