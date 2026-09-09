@@ -130,6 +130,23 @@ def test_natural_exit_is_distinct_from_explicit_stop(tmp_path):
     assert Monitor(tmp_path, tmp_path / "state", [], worker=command).snapshot()["phase"] == "exited"
 
 
+def test_adoption_uses_launch_marker_even_if_launcher_changes_argv(tmp_path):
+    command = [sys.executable, "-c", "import time; time.sleep(120)"]
+    first = Monitor(tmp_path, tmp_path / "state", [], worker=command)
+    try:
+        first.start()
+        saved = json.loads(first.record.read_text())
+        saved["process_command"] = ["a-transient-launcher", "different-argv"]
+        first.record.write_text(json.dumps(saved))
+        adopted = Monitor(tmp_path, tmp_path / "state", [], worker=command)
+        assert adopted.active()
+        saved["launch_marker"] = "unrelated-launch"
+        first.record.write_text(json.dumps(saved))
+        assert not Monitor(tmp_path, tmp_path / "state", [], worker=command).active()
+    finally:
+        first.stop()
+
+
 @pytest.fixture
 def http_monitor(tmp_path):
     monitor = Monitor(tmp_path, tmp_path / "state", [])
