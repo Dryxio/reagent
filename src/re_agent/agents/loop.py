@@ -25,6 +25,7 @@ from re_agent.core.session import Session
 from re_agent.llm.observed import CallBudget, ObservedProvider
 from re_agent.llm.protocol import LLMProvider
 from re_agent.parity.source_indexer import SourceIndexer
+from re_agent.verification.candidate import extract_candidate_body
 from re_agent.verification.objective import verify_candidate
 
 
@@ -128,8 +129,25 @@ def run_fix_loop(
             log_path = log_dir / f"round{round_num}-{timestamp}-reverser.json"
             log_path.write_text(json.dumps(log_entry, indent=2), encoding="utf-8")
 
-        # Check
-        verdict = checker.check(code, target)
+        # Avoid spending a reviewer call on output the configured candidate gate
+        # cannot consume. Keep the same repair/checkpoint path as other failures.
+        preflight_error = None
+        if candidate_gate is not None:
+            try:
+                extract_candidate_body(code)
+            except ValueError as exc:
+                preflight_error = str(exc)
+        if preflight_error:
+            checker.last_prompt = ""
+            checker.last_response = ""
+            verdict = CheckerVerdict(
+                verdict=Verdict.FAIL,
+                summary="Local candidate preflight failed; model review skipped",
+                issues=[preflight_error],
+                fix_instructions=["Return exactly one complete function definition without helper definitions."],
+            )
+        else:
+            verdict = checker.check(code, target)
         last_verdict = verdict
 
         objective_verdict: ObjectiveVerdict | None = None
@@ -148,6 +166,7 @@ def run_fix_loop(
                 "round": round_num,
                 "timestamp": timestamp,
                 "phase": "check",
+                "checker_skipped": preflight_error is not None,
                 "prompt": checker.last_prompt,
                 "response": checker.last_response,
                 "verdict": verdict.verdict.value,
