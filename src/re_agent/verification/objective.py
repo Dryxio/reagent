@@ -91,10 +91,20 @@ def verify_candidate(
             cfg = [item for item in cfg if isinstance(item, dict) and "index" in item]
         if isinstance(cfg, list) and cfg:
             checks_run += 1
-            candidate_blocks = source_flow_count + 1
-            if len(cfg) - candidate_blocks >= control_flow_tolerance:
+            # Source keywords do not predict machine basic-block counts: early
+            # returns, short-circuit conditions and switches all change topology.
+            # Only use CFG topology to flag wholesale removal of branching.
+            branching_blocks = sum(
+                isinstance(block.get("out"), list) and len(set(block["out"])) > 1
+                for block in cfg
+                if isinstance(block.get("out"), list)
+                and all(isinstance(edge, int) for edge in block["out"])
+            )
+            source_has_branching = source_flow_count > 0 or bool(re.search(r"\?|&&|\|\|", source_body))
+            if branching_blocks >= control_flow_tolerance and branching_blocks > 0 and not source_has_branching:
                 findings.append(
-                    f"CFG mismatch: Ghidra has {len(cfg)} basic blocks, candidate implies about {candidate_blocks}"
+                    f"CFG mismatch: binary has {branching_blocks} branching blocks, "
+                    "candidate has no explicit control flow or conditional expressions"
                 )
 
     if getattr(backend.capabilities, "has_pcode", False):
