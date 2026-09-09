@@ -25,7 +25,7 @@ def atomic_json(path: Path, data: Any) -> None:
 
 
 @contextmanager
-def file_lock(path: Path) -> Iterator[None]:
+def file_lock(path: Path, *, blocking: bool = True) -> Iterator[None]:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.with_suffix(path.suffix + ".lock").open("a+b") as handle:
         if os.name == "nt":
@@ -35,11 +35,11 @@ def file_lock(path: Path) -> Iterator[None]:
             handle.write(b"0")
             handle.flush()
             handle.seek(0)
-            msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)  # type: ignore[attr-defined]
+            msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK if blocking else msvcrt.LK_NBLCK, 1)  # type: ignore[attr-defined]
         else:
             import fcntl
 
-            fcntl.flock(handle, fcntl.LOCK_EX)
+            fcntl.flock(handle, fcntl.LOCK_EX | (0 if blocking else fcntl.LOCK_NB))
         try:
             yield
         finally:
