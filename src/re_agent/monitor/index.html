@@ -246,9 +246,9 @@
           <div class="label">Saved final results</div>
         </div>
         <div class="stat">
-          <div class="label">REVIEW PASSED</div>
+          <div class="label">ACCEPTED</div>
           <div id="passed" class="number green">0</div>
-          <div class="label">Not a proof of equivalence</div>
+          <div class="label">Passed the configured acceptance gates</div>
         </div>
         <div class="stat">
           <div class="label">NEEDS ATTENTION</div>
@@ -262,10 +262,10 @@
         </div>
       </section>
       <div class="note">
-        <strong>Draft pass — not a verified build.</strong>
+        <strong>Acceptance follows the configured checks.</strong>
         <p>
           Review passes do not establish compilation or binary equivalence.
-          Saved source remains separate from accepted implementations.
+          Inspect the validation outcome separately from model review.
         </p>
       </div>
       <section class="panel" id="parallel" hidden>
@@ -282,13 +282,14 @@
               <tr>
                 <th>Address</th>
                 <th>Outcome</th>
+                <th>Review</th>
                 <th>Validation</th>
                 <th>Rounds</th>
               </tr>
             </thead>
             <tbody id="results">
               <tr>
-                <td colspan="3">Results appear as functions finish.</td>
+                <td colspan="5">Results appear as functions finish.</td>
               </tr>
             </tbody>
           </table>
@@ -347,7 +348,8 @@
             let tr = document.createElement("tr");
             for (let v of [
               row.address,
-              row.success ? "Review passed" : "Needs attention",
+              row.success ? "Accepted" : "Needs attention",
+              row.verdict || "Not recorded",
               row.validation_verdict || "Not recorded",
               row.rounds_used || 0,
             ]) {
