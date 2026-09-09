@@ -1,0 +1,393 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Reconstruction · Live</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font:
+          15px/1.5 system-ui,
+          sans-serif;
+        background: #0b1018;
+        color: #e8edf5;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+      }
+      main {
+        max-width: 1240px;
+        margin: auto;
+        padding: 40px 30px;
+      }
+      header,
+      .row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 20px;
+      }
+      .eyebrow {
+        color: #7bdcbe;
+        text-transform: uppercase;
+        letter-spacing: 0.18em;
+        font-size: 11px;
+        font-weight: 750;
+      }
+      h1 {
+        font-size: 32px;
+        letter-spacing: -1px;
+        margin: 7px 0;
+      }
+      h2 {
+        font-size: 16px;
+        margin: 0;
+      }
+      p {
+        color: #97a6ba;
+        margin: 6px 0;
+      }
+      button {
+        border: 1px solid #334055;
+        border-radius: 9px;
+        background: #1b293b;
+        color: #ecf2fa;
+        padding: 11px 18px;
+        cursor: pointer;
+        font-weight: 650;
+      }
+      button:hover {
+        background: #2c3d54;
+      }
+      button:disabled {
+        opacity: 0.4;
+        cursor: default;
+      }
+      #start {
+        background: #8be1c1;
+        color: #10271f;
+        border: 0;
+      }
+      #stop {
+        color: #ffb8b8;
+        border-color: #75474d;
+        background: #2e1c26;
+      }
+      .pill {
+        display: inline-block;
+        padding: 5px 11px;
+        border: 1px solid #354457;
+        border-radius: 50px;
+        font-size: 12px;
+        color: #b9c8dc;
+      }
+      .panel {
+        background: #121b28;
+        border: 1px solid #253247;
+        border-radius: 14px;
+        padding: 23px;
+        margin-top: 24px;
+      }
+      .stats {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 15px;
+        margin-top: 23px;
+      }
+      .stat {
+        padding: 20px;
+        background: #121b28;
+        border: 1px solid #253247;
+        border-radius: 12px;
+      }
+      .label {
+        font-size: 12px;
+        color: #98a8bd;
+      }
+      .number {
+        font-size: 32px;
+        letter-spacing: -1px;
+        font-weight: 650;
+        margin: 7px 0;
+      }
+      .green {
+        color: #8be1c1;
+      }
+      .amber {
+        color: #f1c681;
+      }
+      .progress {
+        height: 9px;
+        background: #253247;
+        border-radius: 8px;
+        overflow: hidden;
+        margin: 20px 0 12px;
+      }
+      .fill {
+        height: 100%;
+        background: linear-gradient(90deg, #519dc2, #8be1c1);
+        width: 0;
+        transition: width 0.4s;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: 1.1fr 1fr;
+        gap: 20px;
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+        font-size: 12px;
+        margin-top: 12px;
+      }
+      td,
+      th {
+        text-align: left;
+        padding: 10px 6px;
+        border-bottom: 1px solid #253247;
+      }
+      th {
+        color: #92a4bc;
+        font-weight: 500;
+      }
+      td:first-child {
+        font-family: monospace;
+      }
+      pre {
+        font:
+          12px/1.8 ui-monospace,
+          monospace;
+        white-space: pre-wrap;
+        overflow: auto;
+        max-height: 430px;
+        min-height: 190px;
+        color: #b4c4d9;
+        margin-bottom: 0;
+      }
+      .note {
+        border-left: 3px solid #e0b974;
+        padding-left: 14px;
+        margin-top: 22px;
+        font-size: 13px;
+      }
+      footer {
+        margin-top: 26px;
+        color: #7890ab;
+        font-size: 12px;
+      }
+      #message {
+        min-height: 22px;
+        color: #f1c681;
+        margin-top: 12px;
+      }
+      .error {
+        color: #ffb8b8;
+      }
+      #path {
+        overflow-wrap: anywhere;
+      }
+      .buttons {
+        display: flex;
+        gap: 9px;
+      }
+      @media (max-width: 800px) {
+        .grid {
+          grid-template-columns: 1fr;
+        }
+        .stats {
+          grid-template-columns: repeat(2, 1fr);
+        }
+        header {
+          align-items: flex-start;
+          flex-direction: column;
+        }
+        main {
+          padding: 24px 16px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <div>
+          <div class="eyebrow">ReAgent / local workspace</div>
+          <h1>Reconstruction, live.</h1>
+          <p>Session progress · generation and review</p>
+        </div>
+        <div class="buttons">
+          <button id="start">Start / resume</button
+          ><button id="stop" disabled>Stop run</button>
+        </div>
+      </header>
+      <div id="message" role="status"></div>
+      <section class="panel">
+        <div class="row">
+          <div>
+            <span id="phase" class="pill">Connecting…</span>
+            <p id="batch">Waiting for worker state</p>
+          </div>
+          <div>
+            <strong id="percent">0.00%</strong>
+            <p id="counts">No results yet</p>
+          </div>
+        </div>
+        <div class="progress"><div id="bar" class="fill"></div></div>
+        <p id="activity">Loading live state…</p>
+      </section>
+      <section class="stats">
+        <div class="stat">
+          <div class="label">FUNCTIONS ATTEMPTED</div>
+          <div id="completed" class="number">0</div>
+          <div class="label">Saved final results</div>
+        </div>
+        <div class="stat">
+          <div class="label">REVIEW PASSED</div>
+          <div id="passed" class="number green">0</div>
+          <div class="label">Not a proof of equivalence</div>
+        </div>
+        <div class="stat">
+          <div class="label">NEEDS ATTENTION</div>
+          <div id="failed" class="number amber">0</div>
+          <div class="label">Review or processing failed</div>
+        </div>
+        <div class="stat">
+          <div class="label">REVIEW ROUNDS</div>
+          <div id="rounds" class="number">0</div>
+          <div class="label">Across saved results</div>
+        </div>
+      </section>
+      <div class="note">
+        <strong>Draft pass — not a verified build.</strong>
+        <p>
+          Review passes do not establish compilation or binary equivalence.
+          Saved source remains separate from accepted implementations.
+        </p>
+      </div>
+      <div class="grid">
+        <section class="panel">
+          <h2>Recent results</h2>
+          <table>
+            <thead>
+              <tr>
+                <th>Address</th>
+                <th>Outcome</th>
+                <th>Rounds</th>
+              </tr>
+            </thead>
+            <tbody id="results">
+              <tr>
+                <td colspan="3">Results appear as functions finish.</td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
+        <section class="panel">
+          <div class="row">
+            <h2>Worker activity</h2>
+            <span class="pill">Live</span>
+          </div>
+          <pre id="log">Waiting for activity…</pre>
+        </section>
+      </div>
+      <footer>
+        <div id="connection">Connecting to local host…</div>
+        <p id="path"></p>
+        <p>
+          Closing this window leaves the worker running. Stop run ends the
+          active process tree; Start / resume relaunches the configured command;
+          checkpoint recovery depends on that worker.
+        </p>
+      </footer>
+    </main>
+    <script>
+      const token = "__TOKEN__";
+      let busy = false;
+      const el = (id) => document.getElementById(id);
+      const fmt = (n) => Number(n).toLocaleString();
+      async function refresh() {
+        try {
+          let r = await fetch("/api/status");
+          if (!r.ok) throw Error("Host unavailable");
+          let s = await r.json();
+          let pct = s.targets
+            ? Math.min(100, (100 * s.completed) / s.targets)
+            : 0;
+          el("phase").textContent = s.phase.replaceAll("-", " ");
+          el("batch").textContent = s.controls
+            ? "Worker controls enabled"
+            : "Read-only session monitor";
+          el("percent").textContent = s.targets
+            ? pct.toFixed(2) + "%"
+            : "Total unknown";
+          el("bar").style.width = pct + "%";
+          el("counts").textContent = s.targets
+            ? `${fmt(s.completed)} / ${fmt(s.targets)} attempted`
+            : `${fmt(s.completed)} attempted`;
+          for (let k of ["completed", "passed", "failed", "rounds"])
+            el(k).textContent = fmt(s[k]);
+          el("log").textContent = s.log || "Waiting for worker output…";
+          let lines = (s.log || "").trim().split("\n");
+          el("activity").textContent = s.error
+            ? JSON.stringify(s.error)
+            : lines.at(-1) || "No active function yet";
+          el("results").replaceChildren();
+          for (let row of s.recent) {
+            let tr = document.createElement("tr");
+            for (let v of [
+              row.address,
+              row.success ? "Review passed" : "Needs attention",
+              row.rounds_used || 0,
+            ]) {
+              let td = document.createElement("td");
+              td.textContent = v;
+              tr.append(td);
+            }
+            tr.children[1].className = row.success ? "green" : "amber";
+            el("results").append(tr);
+          }
+          el("start").disabled = busy || s.active || !s.controls;
+          el("stop").disabled = busy || !s.active || !s.controls;
+          el("connection").textContent =
+            `Connected · refreshed ${s.updated} · updates every 2 seconds`;
+          el("path").textContent = s.output;
+        } catch (e) {
+          el("connection").textContent =
+            "Disconnected — reconnecting. Worker state unknown.";
+          el("start").disabled = true;
+          el("stop").disabled = true;
+        }
+      }
+      async function action(name) {
+        busy = true;
+        el("start").disabled = el("stop").disabled = true;
+        el("message").textContent =
+          name === "stop"
+            ? "Stopping worker and child processes…"
+            : "Starting worker…";
+        try {
+          let r = await fetch("/api/" + name, {
+            method: "POST",
+            headers: { "X-Control-Token": token },
+          });
+          let j = await r.json();
+          if (!r.ok) throw Error(j.error);
+          el("message").textContent = j.message;
+        } catch (e) {
+          el("message").textContent = e.message;
+        } finally {
+          busy = false;
+          await refresh();
+        }
+      }
+      el("start").onclick = () => action("start");
+      el("stop").onclick = () => action("stop");
+      refresh();
+      setInterval(refresh, 2000);
+    </script>
+  </body>
+</html>
