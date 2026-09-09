@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
@@ -12,6 +13,7 @@ from re_agent.core.models import (
     AnalysisArtifact,
     AsmResult,
     DecompileResult,
+    EvidenceGap,
     FunctionEntry,
     StructDef,
     StructField,
@@ -128,9 +130,17 @@ class GhidraExportsBackend(StubBackend):
                 k: value.get(k) for k in ("address", "name", "signature", "calling_convention", "callees", "callers")
             },
             "globals": value.get("data_refs", []),
-            "strings": [],
+            "strings": value.get("strings", []),
+            "origin": str(self.root / f"{normalize_address(target)}.json"),
+            "gaps": [asdict(EvidenceGap.from_dict(gap)) for gap in value.get("gaps", [])],
             "cfg": value.get("cfg", []),
         }
+        for field in ("callers", "callees"):
+            if field not in value:
+                data["gaps"].append(asdict(EvidenceGap(
+                    normalize_address(target), f"Export does not contain {field}",
+                    str(self.root / f"{normalize_address(target)}.json"), "unavailable",
+                )))
         return AnalysisArtifact("function-context", target, json.dumps(data))
 
     def _ir(self, target: str, kind: str) -> AnalysisArtifact | None:

@@ -240,3 +240,22 @@ Spaces and shell metacharacters remain literal data; `$VAR` and shell syntax are
 not expanded in arrays. Legacy strings still require `/bin/sh`; doctor reports
 when it is missing. Existing isolation and command-trust requirements still
 apply. Non-isolated arrays must explicitly include a candidate/overlay placeholder.
+
+
+### Optional evidence gaps
+
+Function-context bundles and per-function Ghidra JSON exports may include `gaps`:
+
+```json
+{"function":"0x140001000","site":"0x140001010","kind":"unresolved_call",
+ "reason":"Indirect register call target not resolved","origin":"analysis-export"}
+```
+
+Kinds are `unavailable`, `unsupported`, `query_failed`, `unresolved_call`, and
+`limit`. The site is optional. Addresses are hexadecimal strings of unrestricted
+width. Labels describe observations; they do not establish recovered semantics.
+The graph preserves full context bundles and gap records alongside existing
+nodes/edges. Refreshing a context replaces its previous gap observations. Old
+exports remain supported; absent caller/callee fields produce unavailable records
+while explicitly empty lists describe a known empty result. Detailed indirect-call
+records require an exporter that supplies them; ReAgent does not invent targets.

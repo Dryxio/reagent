@@ -2,9 +2,11 @@
 from __future__ import annotations
 
 import json
+from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
+from re_agent.core.models import EvidenceGap
 from re_agent.utils.address import normalize_address
 from re_agent.utils.evidence import bounded_evidence
 from re_agent.utils.storage import atomic_json
@@ -17,11 +19,15 @@ class KnowledgeGraph:
         self.path = path
         self.nodes: dict[str, dict[str, Any]] = {}
         self.edges: list[dict[str, str]] = []
+        self.contexts: dict[str, dict[str, Any]] = {}
+        self.gaps: list[EvidenceGap] = []
         if path.exists():
             try:
                 payload = json.loads(path.read_text(encoding="utf-8"))
                 self.nodes = payload.get("nodes", {})
                 self.edges = payload.get("edges", [])
+                self.contexts = payload.get("contexts", {})
+                self.gaps = [EvidenceGap.from_dict(gap) for gap in payload.get("gaps", [])]
             except (json.JSONDecodeError, OSError, AttributeError):
                 pass
 
@@ -38,7 +44,17 @@ class KnowledgeGraph:
         address = normalize_address(str(function.get("address") or payload.get("target") or ""))
         if not address:
             return
+        raw_gaps = payload.get("gaps", [])
+        if not isinstance(raw_gaps, list):
+            raise ValueError("Context gaps must be a list")
+        gaps = [EvidenceGap.from_dict(gap) for gap in raw_gaps]
+        if any(gap.function != address for gap in gaps):
+            raise ValueError("Context gap function does not match context address")
+        self.contexts[address] = payload
+        # A refreshed context replaces that function's earlier gap observations.
+        self.gaps = [gap for gap in self.gaps if gap.function != address] + gaps
         source = self._put("function", address, function)
+        self.edges = [edge for edge in self.edges if edge.get("source") != source]
 
         for callee in function.get("callees", []):
             if not isinstance(callee, dict):
@@ -67,12 +83,14 @@ class KnowledgeGraph:
         payload = {
             "nodes": {node_id: self.nodes[node_id] for node_id in node_ids if node_id in self.nodes},
             "edges": related,
+            "gaps": [asdict(gap) for gap in self.gaps if f"function:{gap.function}" in node_ids],
         }
         return bounded_evidence(json.dumps(payload, indent=2), max_chars)
 
     def save(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        payload = {"schema_version": 1, "nodes": self.nodes, "edges": self.edges}
+        payload = {"schema_version": 1, "nodes": self.nodes, "edges": self.edges,
+                   "contexts": self.contexts, "gaps": [asdict(gap) for gap in self.gaps]}
         atomic_json(self.path, payload)
 
     def _put(self, kind: str, identity: str, data: dict[str, Any]) -> str:

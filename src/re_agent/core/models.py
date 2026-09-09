@@ -290,3 +290,36 @@ class ManualCheckEntry:
 
     line: int
     note: str
+
+
+@dataclass(frozen=True)
+class EvidenceGap:
+    """An observed limitation, not a guessed dependency or recovered fact."""
+
+    function: str
+    reason: str
+    origin: str
+    kind: str = "unavailable"
+    site: str | None = None
+
+    @classmethod
+    def from_dict(cls, value: object) -> EvidenceGap:
+        if not isinstance(value, dict):
+            raise ValueError("Evidence gap must be an object")
+        required = ("function", "reason", "origin", "kind")
+        if any(not isinstance(value.get(key), str) or not value[key].strip() for key in required):
+            raise ValueError("Evidence gap requires function, reason, origin, and kind strings")
+        if value["kind"] not in {"unavailable", "unsupported", "query_failed", "unresolved_call", "limit"}:
+            raise ValueError("Unknown evidence gap kind")
+        from re_agent.utils.address import normalize_address
+
+        def address(raw: object) -> str:
+            if not isinstance(raw, str) or not raw.strip():
+                raise ValueError("Evidence gap address must be hexadecimal")
+            normalized = normalize_address(raw)
+            if not all(char in "0123456789abcdef" for char in normalized):
+                raise ValueError("Evidence gap address must be hexadecimal")
+            return normalized
+
+        return cls(address(value["function"]), value["reason"], value["origin"], value["kind"],
+                   address(value["site"]) if value.get("site") is not None else None)
