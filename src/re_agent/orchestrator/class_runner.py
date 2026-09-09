@@ -139,7 +139,12 @@ def _reverse_class_run(
             return _reverse_class(class_name, effective, backend, llm, session, max_functions, checker_llm)
         from re_agent.core.models import FunctionTarget
 
-        entries = backend.remaining(class_name) or backend.unimplemented(class_name)
+        try:
+            entries = backend.remaining(class_name)
+        except Exception:
+            entries = []
+        if not entries:
+            entries = backend.unimplemented(class_name)
         reverse_rank = effective.orchestrator.selection_strategy == "high-impact"
         entries.sort(key=lambda f: (-f.caller_count if reverse_rank else f.caller_count, f.name, f.address))
         targets = [FunctionTarget(f.address, f.class_name or class_name, f.name, f.caller_count) for f in entries]
@@ -206,6 +211,8 @@ def reverse_class(
     checker_llm: LLMProvider | None = None, *, target_addresses: set[str] | None = None,
     provider_factory: ProviderFactory | None = None,
 ) -> list[ReversalResult]:
+    if max_functions is not None and max_functions < 1:
+        raise ValueError("Function attempt limit must be positive")
     session = session or Session(config.output.session_file)
     with session.coordinator():
         return _reverse_class_run(class_name, config, backend, llm, session, max_functions, checker_llm,

@@ -287,3 +287,18 @@ def test_actual_validation_uses_separate_writable_roots(setup, monkeypatch, tmp_
     assert all(r.success for r in results), [r.validation_verdict for r in results]
     assert len(set(roots)) == 2
     assert all(not Path(r).exists() for r in roots)
+
+
+def test_parallel_enumeration_falls_back_without_sharing_provider(setup, monkeypatch):
+    from re_agent.core.models import FunctionEntry
+    from re_agent.orchestrator.class_runner import reverse_class
+
+    config, backend, targets, session = setup
+    backend.remaining.side_effect = NotImplementedError("remaining unavailable")
+    backend.unimplemented.return_value = [FunctionEntry(t.address, t.function_name, t.class_name) for t in targets]
+    monkeypatch.setattr("re_agent.orchestrator.parallel.reverse_single",
+                        lambda target, *args, **kwargs: ReversalResult(target, "ok", success=True))
+    result = reverse_class("C", config, backend, None, session, 4, provider_factory=lambda c: Mock())
+    assert len(result) == 4
+    with pytest.raises(ValueError, match="positive"):
+        reverse_class("C", config, backend, None, session, 0, provider_factory=lambda c: Mock())

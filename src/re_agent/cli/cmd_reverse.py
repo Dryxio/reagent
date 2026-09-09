@@ -63,18 +63,20 @@ def cmd_reverse(args: argparse.Namespace) -> int:
 
     # Parallel jobs construct their own providers; no unused shared clients.
     reverser_llm = checker_llm = None
-    if args.address or config.orchestrator.max_parallel_functions == 1:
-        reverser_llm = create_provider(config.agents.reverser or config.llm)
-        checker_llm = create_provider(config.agents.checker or config.llm)
     backend = create_backend(config.backend)
     session = Session(config.output.session_file)
     from contextlib import ExitStack
 
     with session.coordinator(), ExitStack() as resources:
-        for provider in (reverser_llm, checker_llm):
-            close = getattr(provider, "close", None)
-            if callable(close):
-                resources.callback(close)
+        if args.address or config.orchestrator.max_parallel_functions == 1:
+            providers = []
+            for role in (config.agents.reverser or config.llm, config.agents.checker or config.llm):
+                provider = create_provider(role)
+                providers.append(provider)
+                close = getattr(provider, "close", None)
+                if callable(close):
+                    resources.callback(close)
+            reverser_llm, checker_llm = providers
         session.bind(project_fingerprint(config))
 
         if args.address:
