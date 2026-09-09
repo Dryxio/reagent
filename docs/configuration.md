@@ -259,3 +259,21 @@ nodes/edges. Refreshing a context replaces its previous gap observations. Old
 exports remain supported; absent caller/callee fields produce unavailable records
 while explicitly empty lists describe a known empty result. Detailed indirect-call
 records require an exporter that supplies them; ReAgent does not invent targets.
+
+
+### Bounded target manifests
+
+`re-agent plan --address 0x140001000 --max-depth 2 --max-functions 50 --output group.json`
+creates a deterministic inventory without model calls. Repeat `--address` or use
+`--match` with the backend's symbol-search syntax. Seeds are visited first, then
+direct callees breadth-first. Cycles and duplicates are visited once. Depth zero
+includes only seeds but still records their observed direct dependencies.
+
+The manifest stores the existing project fingerprint, selected function identity,
+selection depth, full returned decompilation/context evidence, direct call edges,
+and explicit gaps. Limits describe incomplete exploration, never completeness.
+Only call references are traversed; unresolved indirect calls require backend
+records. Inspect gaps before using a manifest. Changing fingerprinted inputs
+requires regenerating the plan. Backend CLI configurations without local export
+content cannot fingerprint changes to an external analysis database; regenerate
+after changes to that database.

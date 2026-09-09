@@ -21,6 +21,13 @@ def build_parser() -> argparse.ArgumentParser:
     benchmark_p.add_argument("--manifest", required=True)
     benchmark_p.add_argument("--output")
 
+    plan_p = sub.add_parser("plan", help="Export a bounded target manifest without LLM calls")
+    plan_p.add_argument("--address", action="append", help="Seed function address (repeatable)")
+    plan_p.add_argument("--match", action="append", help="Backend symbol search (repeatable)")
+    plan_p.add_argument("--max-depth", type=int, default=1)
+    plan_p.add_argument("--max-functions", type=int, default=100)
+    plan_p.add_argument("--output", required=True)
+
     # init
     init_p = sub.add_parser("init", help="Initialize re-agent.yaml config file")
     init_p.add_argument("--profile", default=None, help="Use a built-in project profile template")
@@ -65,6 +72,10 @@ def _main(argv: list[str] | None = None) -> int:
         parser.print_help()
         return 0
 
+    if args.command == "plan":
+        from re_agent.cli.cmd_plan import cmd_plan
+
+        return cmd_plan(args)
     if args.command == "doctor":
         from re_agent.cli.cmd_doctor import cmd_doctor
 
