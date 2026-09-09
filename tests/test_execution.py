@@ -79,3 +79,20 @@ def test_cancel_reaps_detached_process_tree(tmp_path):
         if psutil.pid_exists(pid):
             # POSIX init may not have reaped an already-dead grandchild yet.
             assert os.name != "nt" and psutil.Process(pid).status() == psutil.STATUS_ZOMBIE
+
+
+def test_api_transports_do_not_hide_retries_from_call_budget(monkeypatch):
+    from unittest.mock import Mock
+
+    from re_agent.llm.claude import ClaudeProvider
+    from re_agent.llm.openai_compat import OpenAIProvider
+
+    for path, provider in [("re_agent.llm.claude.anthropic.Anthropic", ClaudeProvider),
+                           ("re_agent.llm.openai_compat.openai.OpenAI", OpenAIProvider)]:
+        constructor = Mock()
+        monkeypatch.setattr(path, constructor)
+        client = provider(api_key="test", timeout_s=7)
+        assert constructor.call_args.kwargs["max_retries"] == 0
+        assert constructor.call_args.kwargs["timeout"] == 7
+        client.close()
+        constructor.return_value.close.assert_called_once()

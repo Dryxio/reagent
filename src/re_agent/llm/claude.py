@@ -31,7 +31,7 @@ class ClaudeProvider:
         temperature: float = 0.0,
         timeout_s: int = 1800,
     ) -> None:
-        self._client = anthropic.Anthropic(api_key=api_key, timeout=timeout_s)
+        self._client = anthropic.Anthropic(api_key=api_key, timeout=timeout_s, max_retries=0)
         self.last_metadata: dict[str, Any] = {}
         self._model = model
         self._max_tokens = max_tokens
