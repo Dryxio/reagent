@@ -26,3 +26,21 @@ def test_validation_contract_and_identity(tmp_path):
     validate_config(c)
     c.validation.copy_project = False
     assert project_fingerprint(c) == original
+
+
+def test_semantic_identity_tracks_models_and_acceptance_not_scheduling(tmp_path):
+    from re_agent.config.schema import ReAgentConfig
+    from re_agent.core.identity import project_fingerprint
+
+    config = ReAgentConfig()
+    config.project_profile.source_root = str(tmp_path)
+    original = project_fingerprint(config)
+    config.orchestrator.max_parallel_functions = 4
+    config.orchestrator.max_parallel_validations = 2
+    config.validation.parallel_safe = True
+    assert project_fingerprint(config) == original
+    config.llm.model = "different-model"
+    assert project_fingerprint(config) != original
+    config.llm.model = ReAgentConfig().llm.model
+    config.orchestrator.objective_verifier_enabled = not config.orchestrator.objective_verifier_enabled
+    assert project_fingerprint(config) != original
