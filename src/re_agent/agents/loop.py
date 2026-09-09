@@ -48,6 +48,7 @@ def run_fix_loop(
     max_investigations: int = 8,
     candidate_gate: Callable[[ReversalResult], ReversalResult] | None = None,
     max_llm_calls: int = 80,
+    candidate_preflight: Callable[[ReversalResult], ReversalResult] | None = None,
 ) -> ReversalResult:
     """Run the reverser->checker->fix loop up to max_rounds.
 
@@ -140,6 +141,16 @@ def run_fix_loop(
         placeholders = unresolved_placeholders(code)
         if placeholders:
             preflight_error = "Unresolved decompiler placeholders: " + ", ".join(placeholders)
+        if not preflight_error and candidate_preflight is not None:
+            checked = candidate_preflight(ReversalResult(
+                target=target, code=code, success=True, rounds_used=round_num, run_id=run_id,
+            ))
+            if not checked.success:
+                details = []
+                if checked.validation_verdict:
+                    details = [checked.validation_verdict.summary, *checked.validation_verdict.findings]
+                details.extend(f.reason for f in checked.parity_findings)
+                preflight_error = "Local validation preflight failed: " + "; ".join(details)
         if preflight_error:
             checker.last_prompt = ""
             checker.last_response = ""
