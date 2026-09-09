@@ -209,6 +209,9 @@ def run_fix_loop(
         )
         if candidate_gate is not None:
             result = candidate_gate(result)
+        if objective_verdict is not None and objective_verdict.evidence_conflict:
+            result.success = False
+            result.error = "Stopped: reconcile incompatible structural evidence before retrying"
         gate_issues = [f"parity: {f.reason}" for f in result.parity_findings]
         if result.validation_verdict and result.validation_verdict.verdict != Verdict.PASS:
             gate_issues.extend([result.validation_verdict.summary, *result.validation_verdict.findings])
@@ -218,7 +221,7 @@ def run_fix_loop(
             (log_dir / f"round{round_num}-result.json").write_text(results_to_json([result]), encoding="utf-8")
         if session is not None:
             session.record_checkpoint(result)
-        if result.success:
+        if result.success or (objective_verdict is not None and objective_verdict.evidence_conflict):
             return result
         failure_key = hashlib.sha256(
             json.dumps(
