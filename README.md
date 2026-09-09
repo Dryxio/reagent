@@ -2,7 +2,7 @@
 
 [![PyPI](https://img.shields.io/pypi/v/auto-re-agent)](https://pypi.org/project/auto-re-agent/)
 [![Python](https://img.shields.io/pypi/pyversions/auto-re-agent)](https://pypi.org/project/auto-re-agent/)
-[![CI](https://github.com/Dryxio/auto-re-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/Dryxio/auto-re-agent/actions/workflows/ci.yml)
+[![CI](https://github.com/Dryxio/reagent/actions/workflows/ci.yml/badge.svg)](https://github.com/Dryxio/reagent/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 ReAgent is an open-source AI reverse-engineering agent that uses Ghidra
@@ -19,7 +19,7 @@ Original pre-0.2 demo: [YouTube](https://youtu.be/zBQJYMKmwAs?si=emi1kDsJ81-2-tc
 
 Copy this into your agent:
 
-> Help me set up https://github.com/Dryxio/auto-re-agent. Read the README, check my installed tools and AI provider setup, and help me install and configure what's missing. Ask which program or project to work on. Start with one small function. Run the setup check (re-agent doctor), explain which AI provider will be used and any API costs, and set a small model-call limit. Then try to recreate that function in C/C++ and show me the result, what passed validation, and what still needs checking.
+> Help me set up https://github.com/Dryxio/reagent. Read the README, check my installed tools and AI provider setup, and help me install and configure what's missing. Ask which program or project to work on. Start with one small function. Run the setup check (re-agent doctor), explain which AI provider will be used and any API costs, and set a small model-call limit. Then try to recreate that function in C/C++ and show me the result, what passed validation, and what still needs checking.
 
 You'll need a program to analyze and a supported AI provider. Your agent can help connect Ghidra and use an existing authenticated Claude or Codex CLI, or an API setup.
 
@@ -81,7 +81,7 @@ Prefer to install it yourself? Expand the instructions below.
 - Python 3.10+
 - Git, for the current source installation
 - Ghidra plus a configured
-  [ghidra-ai-bridge](https://github.com/Dryxio/ghidra-ai-bridge)
+  [Ghidra Bridge](https://github.com/Dryxio/ghidra-bridge)
 - At least one LLM setup:
   - Claude API: `ANTHROPIC_API_KEY`
   - OpenAI-compatible API: `OPENAI_API_KEY`
@@ -106,8 +106,8 @@ To install the latest development versions directly from GitHub instead:
 
 ```bash
 python3 -m pip install --upgrade \
-  "ghidra-ai-bridge @ git+https://github.com/Dryxio/ghidra-ai-bridge.git@main" \
-  "auto-re-agent @ git+https://github.com/Dryxio/auto-re-agent.git@main"
+  "ghidra-ai-bridge @ git+https://github.com/Dryxio/ghidra-bridge.git@main" \
+  "auto-re-agent @ git+https://github.com/Dryxio/reagent.git@main"
 ```
 
 ## Set up Ghidra evidence
@@ -128,7 +128,7 @@ ghidra-bridge build-map
 ghidra-bridge info
 ```
 
-See the [bridge documentation](https://github.com/Dryxio/ghidra-ai-bridge)
+See the [bridge documentation](https://github.com/Dryxio/ghidra-bridge)
 for its Ghidra, export, and source-map configuration.
 
 ## Quick start
@@ -481,13 +481,13 @@ backend, leaving room for future IDA, Binary Ninja, or other backends.
 ## Development
 
 ```bash
-git clone https://github.com/Dryxio/auto-re-agent.git
-git clone https://github.com/Dryxio/ghidra-ai-bridge.git
-cd auto-re-agent
+git clone https://github.com/Dryxio/reagent.git
+git clone https://github.com/Dryxio/ghidra-bridge.git
+cd reagent
 
 python3 -m venv .venv
 source .venv/bin/activate
-python3 -m pip install -e "../ghidra-ai-bridge[headless]"
+python3 -m pip install -e "../ghidra-bridge[headless]"
 python3 -m pip install -e ".[dev]"
 
 pytest -q
