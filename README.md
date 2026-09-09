@@ -13,6 +13,16 @@ gates, structural verification, and parity analysis in one autonomous workflow.
 
 Original pre-0.2 demo: [YouTube](https://youtu.be/zBQJYMKmwAs?si=emi1kDsJ81-2-tc3)
 
+## Get started with your AI
+
+**Give your AI this repo and tell it what you want to do.** It can check your setup, install the tools it needs, and walk you through anything that needs your help. Use an AI coding agent that can access files and run commands on your computer.
+
+Copy this into your agent:
+
+> Help me set up https://github.com/Dryxio/auto-re-agent. Read the README, check my installed tools and AI provider setup, and help me install and configure what's missing. Ask which program or project to work on. Start with one small function. Run the setup check (re-agent doctor), explain which AI provider will be used and any API costs, and set a small model-call limit. Then try to recreate that function in C/C++ and show me the result, what passed validation, and what still needs checking.
+
+You'll need a program to analyze and a supported AI provider. Your agent can help connect Ghidra and use an existing authenticated Claude or Codex CLI, or an API setup.
+
 ## What it does
 
 ```text
@@ -58,6 +68,13 @@ scratch project (`copy_project: true`, `cumulative_validation: true`).
 
 See [migration and configuration](docs/configuration.md), [release validation](docs/validation-0.3.md),
 [the GTA differential adapters](examples/gta_timer/README.md), and [the changelog](CHANGELOG.md).
+
+## Manual setup
+
+Prefer to install it yourself? Expand the instructions below.
+
+<details>
+<summary>Manual installation, configuration and examples</summary>
 
 ## Requirements
 
@@ -249,6 +266,8 @@ Codex uses the authenticated local `codex exec` command. CLI-provider
 Omit `agents.reverser` or `agents.checker` to reuse the top-level `llm`
 configuration for that role. A role block is a complete role configuration,
 not a field-by-field merge with `llm`.
+
+</details>
 
 ## Evidence and investigation
 
