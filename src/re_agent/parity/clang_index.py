@@ -86,7 +86,10 @@ def definitions(database: Path, source_root: Path) -> list[tuple[str, str, Path,
                         declaration = int(loc.get("offset", start))
                         # Clang uses UTF-8 byte offsets; the indexer stores character offsets.
                         raw = current_file.read_bytes()
-                        offsets = [len(raw[:pos].decode("utf-8")) for pos in (declaration, start, stop)]
+                        offsets = [
+                            len(raw[:pos].decode("utf-8").replace("\r\n", "\n").replace("\r", "\n"))
+                            for pos in (declaration, start, stop)
+                        ]
                         result.append((owner, name, current_file, offsets[0], offsets[1], offsets[2]))
             for child in node.get("inner", []):
                 if isinstance(child, dict):

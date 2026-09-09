@@ -27,6 +27,10 @@ def cmd_doctor(args: argparse.Namespace) -> int:
             executable = model.cli_path or ("claude" if model.provider == "claude-cli" else "codex")
             add(role + " executable", shutil.which(executable) is not None, executable)
     validation = config.validation
+    commands = validation.build_commands + validation.test_commands + validation.runtime_commands
+    if validation.enabled and any(isinstance(command, str) for command in commands):
+        add("validation shell", shutil.which("/bin/sh") is not None,
+            "Shell strings require /bin/sh; use argument arrays for native Windows validation")
     has_gates = bool(
         validation.build_commands
         or validation.test_commands

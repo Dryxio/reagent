@@ -219,3 +219,24 @@ Shell gates require POSIX `/bin/sh`. Placeholders are expanded as environment da
 including in single/double quotes. Isolated working directories cannot escape the
 copy. Copies are not OS sandboxes: trusted project commands can still explicitly
 access external paths. Internal links are remapped; external/broken links fail.
+
+
+### Portable validation commands
+
+Each build/test/runtime command may be a legacy POSIX shell string or an argument
+array. Arrays execute directly, without a shell, on Windows and POSIX:
+
+```yaml
+validation:
+  build_commands:
+    - [cmake, -S, "{overlay_root}", -B, "{overlay_root}/build"]
+    - [cmake, --build, "{overlay_root}/build"]
+  test_commands:
+    - [ctest, --test-dir, "{overlay_root}/build", --output-on-failure]
+```
+
+Arguments support `{candidate_file}`, `{overlay_root}`, and `{source_file}`.
+Spaces and shell metacharacters remain literal data; `$VAR` and shell syntax are
+not expanded in arrays. Legacy strings still require `/bin/sh`; doctor reports
+when it is missing. Existing isolation and command-trust requirements still
+apply. Non-isolated arrays must explicitly include a candidate/overlay placeholder.

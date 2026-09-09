@@ -118,7 +118,8 @@ def validate_candidate(
         source_file is None
         and config.copy_project
         and commands
-        and not any("{candidate_file}" in command for _, command in commands)
+        and not any("{candidate_file}" in part for _, command in commands
+                    for part in ([command] if isinstance(command, str) else command))
     ):
         return _failed(
             "Candidate has no source location; isolated project commands must explicitly use {candidate_file}",
@@ -151,14 +152,19 @@ def validate_candidate(
     )
     findings: list[str] = []
     for kind, command in commands:
-        expanded = _expand_shell(command)
+        expanded = (
+            ["/bin/sh", "-lc", _expand_shell(command)] if isinstance(command, str)
+            else [_expand_argument(arg, env) for arg in command]
+        )
         try:
             proc = run_process(
-                ["/bin/sh", "-lc", expanded],
+                expanded,
                 cwd=_working_directory(config, candidate_file),
                 env=env,
                 timeout_s=config.command_timeout_s,
             )
+        except OSError as exc:
+            return _failed(f"{kind} command could not start: {exc}", candidate_file, findings)
         except subprocess.TimeoutExpired:
             return _failed(f"{kind} command timed out: {command}", candidate_file, findings)
         tail = "\n".join((proc.stdout + proc.stderr).splitlines()[-20:])
@@ -227,7 +233,17 @@ def _sanitize_path_component(value: str) -> str:
     return re.sub(r"[^A-Za-z0-9_.-]", "_", value)
 
 
-def _consumes_candidate(command: str) -> bool:
+def _expand_argument(argument: str, env: dict[str, str]) -> str:
+    # Single pass: replacement values are data, never additional placeholders.
+    return re.sub(
+        r"\{(candidate_file|overlay_root|source_file)\}",
+        lambda match: env["RE_AGENT_" + match[1].upper()], argument,
+    )
+
+
+def _consumes_candidate(command: str | list[str]) -> bool:
+    if isinstance(command, list):
+        return any(marker in arg for arg in command for marker in ("{candidate_file}", "{overlay_root}"))
     markers = (
         "{candidate_file}",
         "{overlay_root}",
