@@ -53,6 +53,14 @@ def create_provider(config: LLMConfig) -> LLMProvider:
             base_url=config.base_url,
         )
 
+    if config.provider == "grok-cli":
+        from re_agent.llm.grok_cli import GrokCLIProvider
+
+        if config.max_budget_usd is not None:
+            raise ValueError("grok-cli does not support max_budget_usd; configure limits in Grok Build")
+        return GrokCLIProvider(model=config.model, timeout_s=config.timeout_s,
+                               grok_bin=config.cli_path or "grok", effort=config.effort)
+
     if config.provider == "codex":
         from re_agent.llm.codex_cli import CodexCLIProvider
 
@@ -65,5 +73,5 @@ def create_provider(config: LLMConfig) -> LLMProvider:
     raise ValueError(
         f"Unknown LLM provider: {config.provider!r}. "
         f"Supported providers: 'claude', 'claude-cli', 'openai', "
-        f"'openai-compat', 'codex'."
+        f"'openai-compat', 'codex', 'grok-cli'."
     )

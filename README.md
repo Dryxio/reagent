@@ -245,6 +245,23 @@ Claude CLI supports real session resume and reports usage/cost metadata. A
 stale CLI login can still require re-authentication even when its auth-status
 command reports a session.
 
+### Grok Build CLI
+
+Authenticate with `grok login`, then configure:
+
+```yaml
+llm:
+  provider: grok-cli
+  model: "" # Use Grok Build's configured model, or specify a model ID.
+  cli_path: grok
+  timeout_s: 600
+```
+
+Supports native session resume, JSON response validation, usage metadata,
+and tool-free requests from an isolated working directory. Large evidence
+prompts use temporary files. See [Grok Build configuration](docs/grok-build.md)
+for supported settings and limits.
+
 ### OpenAI-compatible APIs
 
 ```yaml
