@@ -1,11 +1,11 @@
-# auto-re-agent
+# ReAgent
 
 [![PyPI](https://img.shields.io/pypi/v/auto-re-agent)](https://pypi.org/project/auto-re-agent/)
 [![Python](https://img.shields.io/pypi/pyversions/auto-re-agent)](https://pypi.org/project/auto-re-agent/)
 [![CI](https://github.com/Dryxio/auto-re-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/Dryxio/auto-re-agent/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-`auto-re-agent` is an open-source AI reverse-engineering agent that uses Ghidra
+ReAgent is an open-source AI reverse-engineering agent that uses Ghidra
 and LLMs—including Claude, Codex, and OpenAI-compatible models—to reconstruct
 and validate C/C++ functions from compiled binaries. It combines independent
 reverser/checker models, agentic evidence gathering, candidate build and test
