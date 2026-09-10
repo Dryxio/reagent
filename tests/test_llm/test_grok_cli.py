@@ -34,8 +34,11 @@ def test_native_sessions_prompt_files_and_tool_free_arguments(monkeypatch):
     assert first[3] == prompt
     assert prompt not in first[0]
     assert first[0][0] == "grok path"
-    assert first[0][first[0].index("--tools") + 1] == ""
+    assert first[0][first[0].index("--tools") + 1] == "read_file"
     assert first[0][first[0].index("--deny") + 1] == "*"
+    assert first[0][first[0].index("--disallowed-tools") + 1] == "read_file,search_tool,use_tool"
+    assert first[1]["env"]["GROK_HOME"] != str(Path.home() / ".grok")
+    assert not (Path(first[1]["env"]["GROK_HOME"]) / "auth.json").exists()
     assert "--no-subagents" in first[0] and "--disable-web-search" in first[0]
     assert first[0][first[0].index("--max-turns") + 1] == "1"
     assert first[0][first[0].index("--system-prompt-override") + 1] == "Preserve behavior"
@@ -93,3 +96,37 @@ def test_unknown_conversation_and_unsupported_budget():
         GrokCLIProvider().resume("missing", "prompt")
     with pytest.raises(ValueError, match="max_budget_usd"):
         create_provider(LLMConfig(provider="grok-cli", max_budget_usd=1))
+
+
+def test_isolated_home_preserves_auth_location_and_local_requirements(tmp_path, monkeypatch):
+    original = tmp_path / "original"
+    original.mkdir()
+    (original / "auth.json").write_text("DO NOT COPY")
+    (original / "requirements.toml").write_text("[models]\nmax_retries = 0\n")
+    monkeypatch.setenv("GROK_HOME", str(original))
+    monkeypatch.delenv("GROK_AUTH_PATH", raising=False)
+    provider = GrokCLIProvider()
+    isolated = Path(provider._env["GROK_HOME"])
+    assert provider._env["GROK_AUTH_PATH"] == str(original / "auth.json")
+    assert not (isolated / "auth.json").exists()
+    assert (isolated / "requirements.toml").read_text() == (original / "requirements.toml").read_text()
+    assert "use_leader = false" in (isolated / "config.toml").read_text()
+    provider.close()
+    assert not isolated.exists()
+    assert (original / "auth.json").read_text() == "DO NOT COPY"
+
+
+def test_error_json_retains_native_stop_reason_and_usage(monkeypatch):
+    payload = {"type": "error", "message": "max turns reached", "stopReason": "cancelled",
+               "num_turns": 1, "usage": {"output_tokens": 100}}
+    monkeypatch.setattr("re_agent.llm.grok_cli.run_process", lambda *args, **kwargs:
+                        subprocess.CompletedProcess([], 1, json.dumps(payload), "secondary warning"))
+    provider = GrokCLIProvider()
+    try:
+        with pytest.raises(RuntimeError, match="max turns reached"):
+            provider.send([])
+        assert provider.last_metadata["num_turns"] == 1
+        assert provider.last_metadata["stopReason"] == "cancelled"
+        assert provider.last_metadata["usage"]["output_tokens"] == 100
+    finally:
+        provider.close()
