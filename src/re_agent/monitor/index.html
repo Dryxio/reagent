@@ -322,7 +322,7 @@
         <label>Batch <select id="batch-select" aria-label="Select batch"><option value="">Live batch</option></select></label>
         <label>Agent <select id="agent-select" aria-label="Select agent"></select></label></div>
         <p id="agent-state" role="status">Loading agents…</p>
-        <p>Unattributed native tokens stay in the shared stream. Individual agent responses appear when identified by the provider. Recent history is bounded.</p>
+        <p>All output combines retained activity and responses, grouped by agent. Select an agent to focus. Unattributed text is labelled shared; earlier batches are available from Batch.</p>
         <div class="terminal-shell">
           <div class="terminal-toolbar">
             <div role="tablist" aria-label="Agent output" class="terminal-tabs">
@@ -397,13 +397,13 @@
           el("batch-select").value = batchSelection;
           if (!batchSelection) agentRows = s.agents || [];
           const selected = el("agent-select").value;
-          el("agent-select").replaceChildren();
+          el("agent-select").replaceChildren(new Option("All output", "__all__"));
           for (const agent of agentRows) {
             const option = document.createElement("option"); option.value = agent.id;
             option.textContent = `${agent.label} · ${agent.status}`; el("agent-select").append(option);
           }
           if (agentRows.some(a => a.id === selected)) el("agent-select").value = selected;
-          else if (agentRows.some(a => a.id.endsWith(":shared"))) el("agent-select").value = agentRows.find(a => a.id.endsWith(":shared")).id;
+          else el("agent-select").value = "__all__";
           renderAgent();
           el("phase").textContent = s.phase.replaceAll("-", " ");
           el("passed-label").textContent = s.passed_label || "ACCEPTED";
@@ -567,13 +567,21 @@
       }
       el("terminal-follow").onclick = () => { followOutput = !followOutput; followLatest(); };
       function renderAgent() {
-        const agent = agentRows.find(a => a.id === el("agent-select").value);
+        const all = el("agent-select").value === "__all__";
+        const grouped = (rows, field) => rows.filter(a => a[field]).map(a => `=== ${a.label} [${a.status}] ===\n${a[field]}`).join("\n\n");
+        const combined = agentRows.filter(a => a.text || a.log).map(a =>
+          `=== ${a.label} [${a.status}] ===\n${[a.log, a.text].filter(Boolean).join("\n\n")}`).join("\n\n");
+        const agent = all ? {id: "__all__", label: "All output", status: "Combined retained output",
+          text: combined, log: grouped(agentRows, "log")} : agentRows.find(a => a.id === el("agent-select").value);
         el("agent-state").textContent = agent ? `${agent.status} · ${agent.id}` : "Waiting for agent events";
         el("terminal-context").textContent = agent?.label || "Agent output";
         const text = agent?.text || "";
         const blocks = [...text.matchAll(/```(?:cpp|c\+\+|cxx)?\s*\n([\s\S]*?)(?:```|$)/g)];
         const values = {
-          "agent-code": agent?.id.endsWith(":shared")
+          "agent-code": all ? agentRows.filter(a => !a.id.endsWith(":shared")).map(a => {
+            const code = [...(a.text || "").matchAll(/```(?:cpp|c\+\+|cxx)?\s*\n([\s\S]*?)(?:```|$)/g)].map(m => m[1]).join("\n\n");
+            return code ? `// ${a.label}\n${code}` : "";
+          }).filter(Boolean).join("\n\n") || "No attributed candidate code yet." : agent?.id.endsWith(":shared")
             ? "Select an individual agent to inspect its candidate code.\nThe shared response can interleave output from several agents; see Full response."
             : blocks.map(m => m[1]).join("\n\n") || "Code appears here as it becomes available.",
           "agent-response": text || "No response text yet.",
@@ -595,13 +603,18 @@
           const history = await response.json();
           if (el("batch-select").value !== source) return;
           agentRows = history.agents;
-          el("agent-select").replaceChildren();
+          el("agent-select").replaceChildren(new Option("All output", "__all__"));
           for (const agent of agentRows) el("agent-select").append(new Option(`${agent.label} · ${agent.status}`, agent.id));
           renderAgent();
           if (history.truncated) el("agent-state").textContent += " · history truncated at 32 MiB";
         } catch (error) { el("agent-state").textContent = error.message; }
       };
-      el("agent-select").onchange = () => { followOutput = true; renderAgent(); };
+      el("agent-select").onchange = () => {
+        followOutput = true;
+        if (el("agent-select").value === "__all__") selectPane(terminalTabs[2]);
+        renderAgent();
+      };
+      selectPane(terminalTabs[2]);
       connect();
     </script>
   </body>
