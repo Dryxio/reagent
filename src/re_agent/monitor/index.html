@@ -236,6 +236,17 @@
       .agent-workspace summary { cursor: pointer; padding: 12px 0; color: #9fb8e8; }
       button:focus-visible, select:focus-visible, summary:focus-visible { outline: 2px solid #86a8f5; outline-offset: 3px; }
       @media (max-width: 800px) { main { padding: 20px 12px; } .agent-workspace .row { align-items: stretch; flex-direction: column; } }
+      .terminal-shell { margin-top: 16px; border: 1px solid #344052; border-radius: 8px; overflow: hidden; background: #0c0c0c; }
+      .terminal-toolbar { display: flex; justify-content: space-between; align-items: center; background: #202020; gap: 8px; padding: 6px 8px 0; flex-wrap: wrap; }
+      .terminal-tabs { display: flex; gap: 4px; overflow-x: auto; }
+      .terminal-tabs button { border: 0; border-radius: 6px 6px 0 0; background: transparent; color: #aaa; padding: 10px 18px; white-space: nowrap; }
+      .terminal-tabs button[aria-selected="true"] { background: #0c0c0c; color: #f2f2f2; box-shadow: inset 0 2px #83aaff; }
+      #terminal-follow { font-size: 11px; padding: 5px 9px; margin-bottom: 6px; }
+      .terminal-caption, .terminal-footer { font: 12px Consolas, 'Cascadia Mono', monospace; padding: 10px 16px; color: #a6bad2; overflow-wrap: anywhere; }
+      .terminal-footer { border-top: 1px solid #242424; color: #929292; }
+      .agent-workspace .terminal-shell pre { font: 13px/1.55 'Cascadia Mono', Consolas, monospace; color: #ddd; background: #0c0c0c; border: 0; border-radius: 0; margin: 0; height: clamp(280px, 52vh, 640px); max-height: none; white-space: pre; overflow: auto; overflow-wrap: normal; padding: 8px 16px 20px; tab-size: 4; }
+      .terminal-shell [hidden] { display: none; }
+      @media(max-width: 480px) { .terminal-tabs button { padding: 10px; } }
     </style>
   </head>
   <body>
@@ -299,7 +310,7 @@
         <summary>Run details &amp; throughput</summary>
         <table><tbody id="detail-rows"></tbody></table>
         <p>Awaiting collection includes finished children whose results the parent has not collected yet.</p>
-      </section>
+      </details>
       <section class="panel" id="parallel" hidden>
         <h2>Function workers</h2>
         <p id="queue"></p>
@@ -312,9 +323,21 @@
         <label>Agent <select id="agent-select" aria-label="Select agent"></select></label></div>
         <p id="agent-state" role="status">Loading agents…</p>
         <p>Unattributed native tokens stay in the shared stream. Individual agent responses appear when identified by the provider. Recent history is bounded.</p>
-        <div class="grid"><div><h3>Candidate code</h3><pre id="agent-code"></pre></div>
-        <div><h3>Activity / errors</h3><pre id="agent-log"></pre></div></div>
-        <details><summary>Full response / evidence notes</summary><pre id="agent-response"></pre></details>
+        <div class="terminal-shell">
+          <div class="terminal-toolbar">
+            <div role="tablist" aria-label="Agent output" class="terminal-tabs">
+              <button role="tab" id="tab-code" aria-controls="agent-code" aria-selected="true" data-pane="agent-code">Code</button>
+              <button role="tab" id="tab-log" aria-controls="agent-log" aria-selected="false" tabindex="-1" data-pane="agent-log">Activity</button>
+              <button role="tab" id="tab-response" aria-controls="agent-response" aria-selected="false" tabindex="-1" data-pane="agent-response">Full response</button>
+            </div>
+            <button id="terminal-follow" aria-pressed="true">Following output</button>
+          </div>
+          <div class="terminal-caption">REAGENT &gt; <span id="terminal-context">Agent output</span></div>
+          <pre id="agent-code" role="tabpanel" aria-labelledby="tab-code" tabindex="0"></pre>
+          <pre id="agent-log" role="tabpanel" aria-labelledby="tab-log" tabindex="0" hidden></pre>
+          <pre id="agent-response" role="tabpanel" aria-labelledby="tab-response" tabindex="0" hidden></pre>
+          <div class="terminal-footer">Read-only output · scroll up to pause · Follow output jumps to the latest lines</div>
+        </div>
       </section>
       <div class="grid">
         <section class="panel">
@@ -508,14 +531,60 @@
         };
         socket.onerror = () => socket.close();
       }
+      let activePane = "agent-code";
+      let followOutput = true;
+      function followLatest() {
+        el("terminal-follow").textContent = followOutput ? "Following output" : "Follow output";
+        el("terminal-follow").setAttribute("aria-pressed", String(followOutput));
+        if (followOutput) requestAnimationFrame(() => { const pane = el(activePane); pane.scrollTop = pane.scrollHeight; });
+      }
+      const terminalTabs = [...document.querySelectorAll("[data-pane]")];
+      function selectPane(tab) {
+        activePane = tab.dataset.pane;
+        for (const item of terminalTabs) {
+          const selected = item === tab;
+          item.setAttribute("aria-selected", String(selected)); item.tabIndex = selected ? 0 : -1;
+          el(item.dataset.pane).hidden = !selected;
+        }
+        followLatest();
+      }
+      for (const [index, tab] of terminalTabs.entries()) {
+        tab.onclick = () => selectPane(tab);
+        tab.onkeydown = event => {
+          if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+          event.preventDefault();
+          const next = event.key === "Home" ? 0 : event.key === "End" ? terminalTabs.length - 1
+            : (index + (event.key === "ArrowRight" ? 1 : -1) + terminalTabs.length) % terminalTabs.length;
+          selectPane(terminalTabs[next]); terminalTabs[next].focus();
+        };
+        el(tab.dataset.pane).addEventListener("scroll", () => {
+          const pane = el(tab.dataset.pane);
+          if (pane.hidden) return;
+          followOutput = pane.scrollHeight - pane.clientHeight - pane.scrollTop < 24;
+          el("terminal-follow").textContent = followOutput ? "Following output" : "Follow output";
+          el("terminal-follow").setAttribute("aria-pressed", String(followOutput));
+        });
+      }
+      el("terminal-follow").onclick = () => { followOutput = !followOutput; followLatest(); };
       function renderAgent() {
         const agent = agentRows.find(a => a.id === el("agent-select").value);
         el("agent-state").textContent = agent ? `${agent.status} · ${agent.id}` : "Waiting for agent events";
+        el("terminal-context").textContent = agent?.label || "Agent output";
         const text = agent?.text || "";
         const blocks = [...text.matchAll(/```(?:cpp|c\+\+|cxx)?\s*\n([\s\S]*?)(?:```|$)/g)];
-        el("agent-code").textContent = blocks.map(m => m[1]).join("\n\n") || "Code appears here as it becomes available.";
-        el("agent-response").textContent = text || "No response text yet.";
-        el("agent-log").textContent = agent?.log || "No activity recorded yet.";
+        const values = {
+          "agent-code": agent?.id.endsWith(":shared")
+            ? "Select an individual agent to inspect its candidate code.\nThe shared response can interleave output from several agents; see Full response."
+            : blocks.map(m => m[1]).join("\n\n") || "Code appears here as it becomes available.",
+          "agent-response": text || "No response text yet.",
+          "agent-log": agent?.log || "No activity recorded yet."
+        };
+        for (const [id, value] of Object.entries(values)) {
+          const pane = el(id); const position = pane.scrollTop;
+          if (pane.textContent !== value) pane.textContent = value;
+          if (!followOutput) pane.scrollTop = position;
+        }
+        followLatest();
       }
       el("batch-select").onchange = async () => {
         const source = el("batch-select").value;
@@ -532,7 +601,7 @@
           if (history.truncated) el("agent-state").textContent += " · history truncated at 32 MiB";
         } catch (error) { el("agent-state").textContent = error.message; }
       };
-      el("agent-select").onchange = renderAgent;
+      el("agent-select").onchange = () => { followOutput = true; renderAgent(); };
       connect();
     </script>
   </body>
