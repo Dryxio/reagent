@@ -102,6 +102,26 @@ def test_external_progress_rejects_unsafe_or_ambiguous_configuration(tmp_path, o
         Monitor(tmp_path, tmp_path / "state", [], **options)
 
 
+def test_managed_batch_resume_clears_stop_and_prevents_duplicate(tmp_path):
+    (tmp_path / "STOP").touch()
+    monitor = Monitor(tmp_path, tmp_path / "state", [],
+                      worker=[sys.executable, "-c", "import time; time.sleep(30)"],
+                      progress_file="status.json", stop_file="STOP")
+    try:
+        first = monitor.start()
+        assert not (tmp_path / "STOP").exists()
+        assert monitor.start()["pid"] == first["pid"]
+        state = monitor.snapshot()
+        assert state["active"] and state["can_start"]
+        assert state["phase"] == "starting"
+        monitor.stop()
+        assert (tmp_path / "STOP").exists()
+    finally:
+        if monitor.process:
+            monitor.process.kill()
+            monitor.process.wait(timeout=5)
+
+
 def test_worker_tree_stop_duplicate_start_and_host_reconnect(tmp_path):
     script = tmp_path / "worker with spaces.py"
     script.write_text(

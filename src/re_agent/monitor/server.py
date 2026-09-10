@@ -45,8 +45,8 @@ class Monitor:
                 raise ValueError("Progress and stop files must be relative to the working directory")
         if stop_file and not progress_file:
             raise ValueError("A stop file requires a progress file")
-        if progress_file and worker:
-            raise ValueError("External progress cannot be combined with a managed worker")
+        if progress_file and worker and not stop_file:
+            raise ValueError("Managed batch progress requires a cooperative stop file")
         self.progress_file = self.work_dir / progress_file if progress_file else None
         self.stop_file = self.work_dir / stop_file if stop_file else None
         self.state_dir = state_dir.resolve()
@@ -104,6 +104,15 @@ class Monitor:
             self._adopt()
             if self.active():
                 return {"message": "Already running", "pid": self.process.pid}
+            if self.progress_file:
+                saved_progress = read_json(self.progress_file)
+                pid = saved_progress.get("pid")
+                if type(pid) is int and self.psutil.pid_exists(pid):
+                    raise ValueError("A recorded external worker still exists; refusing a duplicate launch")
+            if self.stop_file:
+                if not self.stop_file.resolve().is_relative_to(self.work_dir):
+                    raise ValueError("Stop file escaped the working directory")
+                self.stop_file.unlink(missing_ok=True)
             self.state_dir.mkdir(parents=True, exist_ok=True)
             marker = secrets.token_urlsafe(32)
             with (self.state_dir / "worker.stdout.log").open("ab") as out, \
@@ -269,6 +278,10 @@ class Monitor:
         fresh = isinstance(updated, (int, float)) and 0 <= time.time() - updated < 60
         running_phases = {"opening-analysis", "exporting-evidence", "native-subagents", "validating-candidates"}
         active = fresh and phase in running_phases
+        if self.worker:
+            active = self.active()
+            if active and phase not in running_phases:
+                phase = "starting"
         if active and self.stop_file and self.stop_file.exists():
             phase = "stopping"
         elif not fresh and phase in running_phases:
@@ -307,7 +320,7 @@ class Monitor:
         diagnostics = [f"{row['address']}: {row['diagnostic']}"
                        for row in rows if isinstance(row, dict)
                        and row.get("address") and row.get("diagnostic")]
-        return {"active": bool(active), "controls": self.stop_file is not None, "can_start": False,
+        return {"active": bool(active), "controls": self.stop_file is not None, "can_start": bool(self.worker),
                 "can_stop": self.stop_file is not None and phase != "stopping", "force_stop": False,
                 "phase": phase, "targets": count("total"), "completed": count("completed"),
                 "passed": count("compiled"), "failed": count("failed"), "rounds": 0,

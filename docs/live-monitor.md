@@ -53,7 +53,10 @@ re-agent monitor --work-dir /path/to/run --progress-file status.json --stop-file
 Both file paths must stay within the working directory. The monitor does not adopt
 or restart the external process. Stop creates the configured cooperative signal;
 the runner must watch it and cancel its own children. Omit `--stop-file` for
-read-only reporting. External progress cannot be combined with `--worker`.
+read-only reporting. To enable Start / resume, also configure `--worker` (last option) and `--stop-file`.
+The monitor clears the stop signal before launching its managed worker and refuses
+a duplicate launch while the recorded process exists. The runner must implement
+checkpoint recovery; the monitor does not reinterpret its saved work.
 
 The progress JSON uses `phase`, Unix-second `started`, `updated` and
 `batch_started` timestamps, and integer `total`, `completed`, `compiled`, `failed`,
