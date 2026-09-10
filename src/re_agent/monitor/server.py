@@ -27,13 +27,24 @@ class Monitor:
     """Read sessions without changing them; control only a configured child worker."""
 
     def __init__(self, work_dir: Path, state_dir: Path, session_globs: list[str],
-                 log_glob: str | None = None, total: int = 0, worker: list[str] | None = None) -> None:
+                 log_glob: str | None = None, total: int = 0, worker: list[str] | None = None,
+                 progress_file: str | None = None, stop_file: str | None = None) -> None:
         if total < 0:
             raise ValueError("Total function count must be nonnegative")
         for pattern in [*session_globs, *([log_glob] if log_glob else [])]:
             if Path(pattern).anchor or ".." in Path(pattern).parts:
                 raise ValueError("Monitor patterns must be relative to the working directory")
         self.work_dir = work_dir.resolve()
+        for value in (progress_file, stop_file):
+            if value and (Path(value).is_absolute()
+                          or not (self.work_dir / value).resolve().is_relative_to(self.work_dir)):
+                raise ValueError("Progress and stop files must be relative to the working directory")
+        if stop_file and not progress_file:
+            raise ValueError("A stop file requires a progress file")
+        if progress_file and worker:
+            raise ValueError("External progress cannot be combined with a managed worker")
+        self.progress_file = self.work_dir / progress_file if progress_file else None
+        self.stop_file = self.work_dir / stop_file if stop_file else None
         self.state_dir = state_dir.resolve()
         self.session_globs = session_globs
         self.log_glob = log_glob
@@ -129,6 +140,11 @@ class Monitor:
         return result
 
     def stop(self) -> dict[str, str]:
+        if self.stop_file is not None:
+            if not self.stop_file.resolve().is_relative_to(self.work_dir):
+                raise ValueError("Stop file escaped the working directory")
+            self.stop_file.touch()
+            return {"message": "Cooperative stop requested; the external runner handles cancellation."}
         if not self.worker:
             raise ValueError("Read-only monitor: no worker command configured")
         with self.lock, file_lock(self.record):
@@ -218,11 +234,76 @@ class Monitor:
                 phase = "stopping" if saved.get("phase") == "stopping" else "running"
             elif self.worker and matching:
                 phase = "stopped" if saved.get("phase") in {"stopped", "stopping"} else "exited"
-            return {"active": active, "controls": bool(self.worker),
+            snapshot = {"active": active, "controls": bool(self.worker),
                     "phase": phase, "executions": [data for _, data in self.executions()],
                     "targets": self.total, "completed": len(recent), "passed": passed,
                     "failed": len(recent) - passed, "rounds": rounds, "recent": recent[:18], "log": tail,
                     "updated": time.strftime("%H:%M:%S"), "output": str(self.work_dir)}
+            if self.progress_file is not None:
+                snapshot.update(self.external_progress())
+            return snapshot
+
+    def external_progress(self) -> dict[str, Any]:
+        """Adapt a cooperative batch runner's progress without adopting its process."""
+        data = read_json(self.progress_file) if self.progress_file else {}
+        def count(key: str) -> int:
+            value = data.get(key, 0)
+            return max(0, value) if type(value) is int else 0
+        phase = str(data.get("phase", "waiting-for-progress"))
+        updated = data.get("updated")
+        fresh = isinstance(updated, (int, float)) and 0 <= time.time() - updated < 60
+        running_phases = {"opening-analysis", "exporting-evidence", "native-subagents", "validating-candidates"}
+        active = fresh and phase in running_phases
+        if active and self.stop_file and self.stop_file.exists():
+            phase = "stopping"
+        elif not fresh and phase in running_phases:
+            phase = "status-stale"
+        recent = []
+        for row in data.get("recent", []) if isinstance(data.get("recent"), list) else []:
+            if not isinstance(row, dict) or not isinstance(row.get("address"), str):
+                continue
+            recent.append({"address": row["address"], "success": False,
+                           "result_label": "Compiled draft" if row.get("compiled") is True else "Needs attention",
+                           "verdict": "Not reviewed",
+                           "validation_verdict": "Build PASS" if row.get("compiled") is True else "FAIL",
+                           "rounds_used": 0})
+        summary = (f"Batch {count('batch')} / {count('batches')} · "
+                   f"{count('child_started')} native children started · {count('child_returned')} results collected · "
+                   f"{count('active_children')} awaiting collection")
+        started = data.get("started")
+        elapsed = max(0.0, time.time() - started) if isinstance(started, (int, float)) else 0.0
+        batch_started = data.get("batch_started")
+        batch_elapsed = max(0.0, time.time() - batch_started) if isinstance(batch_started, (int, float)) else 0.0
+        rate = count("completed") * 60 / elapsed if elapsed else 0.0
+        details = [
+            {"label": "Elapsed", "value": f"{elapsed / 60:.1f} minutes"},
+            {"label": "Throughput", "value": f"{rate:.2f} functions/minute"},
+            {"label": "Current batch elapsed", "value": f"{batch_elapsed / 60:.1f} minutes"},
+            {"label": "Remaining functions", "value": str(max(0, count("total") - count("completed")))},
+            {"label": "Native children started", "value": str(count("child_started"))},
+            {"label": "Results collected", "value": str(count("child_returned"))},
+            {"label": "Awaiting collection", "value": str(count("active_children"))},
+            {"label": "Behaviorally verified", "value": str(count("verified"))},
+            {"label": "Progress freshness", "value": "Current" if fresh else "Stale or unavailable"},
+        ]
+        rows = data.get("recent")
+        if not isinstance(rows, list):
+            rows = []
+        diagnostics = [f"{row['address']}: {row['diagnostic']}"
+                       for row in rows if isinstance(row, dict)
+                       and row.get("address") and row.get("diagnostic")]
+        return {"active": bool(active), "controls": self.stop_file is not None, "can_start": False,
+                "can_stop": self.stop_file is not None and phase != "stopping", "force_stop": False,
+                "phase": phase, "targets": count("total"), "completed": count("completed"),
+                "passed": count("compiled"), "failed": count("failed"), "rounds": 0,
+                "passed_label": "Compiled drafts",
+                "passed_detail": "Syntax checks passed; not accepted reconstructions",
+                "result_note": ("Native candidates are unverified drafts. "
+                                "Model review and behavioral acceptance have not run."),
+                "recent": recent[-18:][::-1], "executions": [], "progress_summary": summary,
+                "error": data.get("error"), "activity": summary, "details": details,
+                "data_age_s": max(0, time.time() - updated) if isinstance(updated, (int, float)) else None,
+                "diagnostics": "\n".join(diagnostics)[-7000:]}
 
 
 def make_server(monitor: Monitor, port: int = 8765) -> ThreadingHTTPServer:

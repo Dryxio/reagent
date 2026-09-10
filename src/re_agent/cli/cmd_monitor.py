@@ -13,7 +13,7 @@ def cmd_monitor(args: argparse.Namespace) -> int:
         raise ValueError("Port must be between 0 and 65535")
     root = Path(args.work_dir).resolve()
     monitor = Monitor(root, root / args.state_dir, args.session_glob or ["re-agent-progress.json"],
-                      args.log_glob, args.total, args.worker)
+                      args.log_glob, args.total, args.worker, args.progress_file, args.stop_file)
     with make_server(monitor, args.port) as server:
         print(f"Live monitor: http://127.0.0.1:{server.server_port}", flush=True)
         print("Closing the monitor does not stop the worker. Use Stop run to terminate it.", flush=True)

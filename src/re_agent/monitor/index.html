@@ -86,6 +86,8 @@
         color: #b9c8dc;
       }
       .panel {
+        min-width: 0;
+        overflow-x: auto;
         background: #121b28;
         border: 1px solid #253247;
         border-radius: 14px;
@@ -146,6 +148,7 @@
       }
       td,
       th {
+        overflow-wrap: anywhere;
         text-align: left;
         padding: 10px 6px;
         border-bottom: 1px solid #253247;
@@ -195,6 +198,7 @@
         gap: 9px;
       }
       @media (max-width: 800px) {
+        .row { flex-wrap: wrap; }
         .grid {
           grid-template-columns: 1fr;
         }
@@ -208,6 +212,14 @@
         main {
           padding: 24px 16px;
         }
+      }
+      @media (max-width: 420px) {
+        .stat { padding: 12px; }
+        .panel { padding: 14px; }
+        .number { font-size: 27px; }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .fill { transition: none; }
       }
     </style>
   </head>
@@ -246,9 +258,9 @@
           <div class="label">Saved final results</div>
         </div>
         <div class="stat">
-          <div class="label">ACCEPTED</div>
+          <div class="label" id="passed-label">ACCEPTED</div>
           <div id="passed" class="number green">0</div>
-          <div class="label">Passed the configured acceptance gates</div>
+          <div class="label" id="passed-detail">Passed the configured acceptance gates</div>
         </div>
         <div class="stat">
           <div class="label">NEEDS ATTENTION</div>
@@ -263,11 +275,16 @@
       </section>
       <div class="note">
         <strong>Acceptance follows the configured checks.</strong>
-        <p>
+        <p id="result-note">
           Review passes do not establish compilation or binary equivalence.
           Inspect the validation outcome separately from model review.
         </p>
       </div>
+      <section class="panel" id="run-details" hidden>
+        <h2>Run details</h2>
+        <table><tbody id="detail-rows"></tbody></table>
+        <p>Awaiting collection includes finished children whose results the parent has not collected yet.</p>
+      </section>
       <section class="panel" id="parallel" hidden>
         <h2>Function workers</h2>
         <p id="queue"></p>
@@ -305,7 +322,7 @@
       <footer>
         <div id="connection">Connecting to local host…</div>
         <p id="path"></p>
-        <p>
+        <p id="control-note">
           Closing this window leaves the worker running. Stop run ends the
           active process tree; Start / resume relaunches the configured command;
           checkpoint recovery depends on that worker.
@@ -317,18 +334,29 @@
       let busy = false;
       const el = (id) => document.getElementById(id);
       const fmt = (n) => Number(n).toLocaleString();
+      let refreshing = false;
       async function refresh() {
+        if (refreshing) return;
+        refreshing = true;
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 8000);
         try {
-          let r = await fetch("/api/status");
+          let r = await fetch("/api/status", {signal: controller.signal, cache: "no-store"});
           if (!r.ok) throw Error("Host unavailable");
           let s = await r.json();
           let pct = s.targets
             ? Math.min(100, (100 * s.completed) / s.targets)
             : 0;
           el("phase").textContent = s.phase.replaceAll("-", " ");
-          el("batch").textContent = s.controls
+          el("passed-label").textContent = s.passed_label || "ACCEPTED";
+          el("control-note").textContent = s.can_start === false
+            ? "Closing this window leaves the run active. Stop run sends the configured cooperative stop signal. Starting and resuming remain with the external runner."
+            : "Closing this window leaves the worker running. Stop run ends the active process tree; Start / resume relaunches the configured command; checkpoint recovery depends on that worker.";
+          el("passed-detail").textContent = s.passed_detail || "Passed the configured acceptance gates";
+          el("result-note").textContent = s.result_note || "Review passes do not establish compilation or binary equivalence. Inspect the validation outcome separately from model review.";
+          el("batch").textContent = s.progress_summary || (s.controls
             ? "Worker controls enabled"
-            : "Read-only session monitor";
+            : "Read-only session monitor");
           el("percent").textContent = s.targets
             ? pct.toFixed(2) + "%"
             : "Total unknown";
@@ -338,17 +366,26 @@
             : `${fmt(s.completed)} attempted`;
           for (let k of ["completed", "passed", "failed", "rounds"])
             el(k).textContent = fmt(s[k]);
-          el("log").textContent = s.log || "Waiting for worker output…";
+          el("log").textContent = [s.diagnostics, s.log].filter(Boolean).join("\n\n") || "Waiting for worker output…";
+          el("run-details").hidden = !(s.details || []).length;
+          el("detail-rows").replaceChildren();
+          for (const detail of s.details || []) {
+            const tr = document.createElement("tr");
+            for (const value of [detail.label, detail.value]) {
+              const td = document.createElement("td"); td.textContent = value; tr.append(td);
+            }
+            el("detail-rows").append(tr);
+          }
           let lines = (s.log || "").trim().split("\n");
           el("activity").textContent = s.error
             ? JSON.stringify(s.error)
-            : lines.at(-1) || "No active function yet";
+            : s.activity || lines.at(-1) || "No active function yet";
           el("results").replaceChildren();
           for (let row of s.recent) {
             let tr = document.createElement("tr");
             for (let v of [
               row.address,
-              row.success ? "Accepted" : "Needs attention",
+              row.result_label || (row.success ? "Accepted" : "Needs attention"),
               row.verdict || "Not recorded",
               row.validation_verdict || "Not recorded",
               row.rounds_used || 0,
@@ -379,17 +416,21 @@
             }
             el("jobs").append(tr);
           }
-          el("stop").textContent = s.phase === "stopping" ? "Force stop" : "Stop run";
-          el("start").disabled = busy || s.active || !s.controls;
-          el("stop").disabled = busy || !s.active || !s.controls;
+          el("stop").textContent = s.phase === "stopping" ? (s.force_stop === false ? "Stopping…" : "Force stop") : "Stop run";
+          el("start").disabled = busy || s.active || !s.controls || s.can_start === false;
+          el("stop").disabled = busy || !s.active || !s.controls || s.can_stop === false;
           el("connection").textContent =
-            `Connected · refreshed ${s.updated} · updates every 2 seconds`;
+            `Connected · refreshed ${s.updated} · updates every 2 seconds` +
+            (s.data_age_s == null ? "" : ` · source data ${Math.floor(s.data_age_s)}s old`);
           el("path").textContent = s.output;
         } catch (e) {
           el("connection").textContent =
             "Disconnected — reconnecting. Worker state unknown.";
           el("start").disabled = true;
           el("stop").disabled = true;
+        } finally {
+          clearTimeout(timeout);
+          refreshing = false;
         }
       }
       async function action(name) {

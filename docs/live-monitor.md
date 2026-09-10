@@ -42,3 +42,30 @@ Control records and worker stdout/stderr live in `reports/monitor` by default; o
 ## Local access
 
 The server binds only to IPv4 loopback. Host-header checks reject DNS-rebinding requests. Control endpoints require a random per-host token and reject cross-origin requests. HTTP clients cannot supply a different worker command or arbitrary file path. No external scripts, fonts, telemetry or services are used by the dashboard. This is a local tool, not a multi-user network service.
+# External batch progress
+
+Use the existing dashboard for a separately launched batch runner:
+
+```console
+re-agent monitor --work-dir /path/to/run --progress-file status.json --stop-file STOP --log-glob "batch-*/stderr.log"
+```
+
+Both file paths must stay within the working directory. The monitor does not adopt
+or restart the external process. Stop creates the configured cooperative signal;
+the runner must watch it and cancel its own children. Omit `--stop-file` for
+read-only reporting. External progress cannot be combined with `--worker`.
+
+The progress JSON uses `phase`, Unix-second `started`, `updated` and
+`batch_started` timestamps, and integer `total`, `completed`, `compiled`, `failed`,
+`verified`, `batch`, `batches`, `child_started`, `child_returned` and
+`active_children` counters. `recent` contains rows with `address`, `compiled` and
+optional `diagnostic`; optional `error` describes a run-level failure.
+Active phases are `opening-analysis`, `exporting-evidence`, `native-subagents` and
+`validating-candidates`. Updates older than 60 seconds are marked stale; this is
+a freshness indication, not proof that a process has exited.
+
+Compiled drafts are explicitly distinguished from accepted reconstructions.
+Child counts describe starts and collected results, not measured model-request
+concurrency. The existing layout displays elapsed time, throughput, batch
+progress, diagnostics and source-data age. Browser refreshes run every two
+seconds, do not overlap, and time out after eight seconds.

@@ -63,6 +63,45 @@ def test_read_only_monitor_cannot_start_or_stop(tmp_path):
     assert not (tmp_path / "state").exists()
 
 
+def test_external_progress_preserves_draft_semantics_and_cooperative_stop(tmp_path):
+    data = {"phase": "native-subagents", "updated": time.time(), "total": 100,
+            "completed": 32, "compiled": 31, "failed": 1, "batch": 2, "batches": 4,
+            "child_started": 32, "child_returned": 16, "active_children": 16,
+            "recent": [{"address": "100", "compiled": True}]}
+    (tmp_path / "status.json").write_text(json.dumps(data))
+    monitor = Monitor(tmp_path, tmp_path / "state", [], progress_file="status.json", stop_file="STOP")
+    state = monitor.snapshot()
+    assert state["active"] and not state["can_start"]
+    assert state["passed_label"] == "Compiled drafts"
+    assert (state["completed"], state["passed"], state["failed"]) == (32, 31, 1)
+    assert not state["recent"][0]["success"]
+    assert state["recent"][0]["verdict"] == "Not reviewed"
+    assert state["data_age_s"] >= 0
+    assert any(item["label"] == "Throughput" for item in state["details"])
+    with pytest.raises(ValueError, match="Read-only"):
+        monitor.start()
+    monitor.stop()
+    assert (tmp_path / "STOP").exists()
+    assert monitor.snapshot()["phase"] == "stopping"
+    assert not monitor.snapshot()["can_stop"]
+    data["updated"] -= 120
+    (tmp_path / "status.json").write_text(json.dumps(data))
+    assert monitor.snapshot()["phase"] == "status-stale"
+    assert not monitor.snapshot()["active"]
+    (tmp_path / "status.json").write_text('{"phase": "completed", "recent": null}')
+    assert not monitor.snapshot()["active"]
+    assert monitor.snapshot()["recent"] == []
+
+
+@pytest.mark.parametrize("options", [
+    {"progress_file": "../status.json"}, {"progress_file": "status.json", "stop_file": "../STOP"},
+    {"stop_file": "STOP"}, {"progress_file": "status.json", "worker": ["python"]},
+])
+def test_external_progress_rejects_unsafe_or_ambiguous_configuration(tmp_path, options):
+    with pytest.raises(ValueError):
+        Monitor(tmp_path, tmp_path / "state", [], **options)
+
+
 def test_worker_tree_stop_duplicate_start_and_host_reconnect(tmp_path):
     script = tmp_path / "worker with spaces.py"
     script.write_text(
