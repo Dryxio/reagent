@@ -25,6 +25,7 @@ from re_agent.core.session import Session
 from re_agent.llm.observed import CallBudget, ObservedProvider
 from re_agent.llm.protocol import LLMProvider
 from re_agent.parity.source_indexer import SourceIndexer
+from re_agent.verification.candidate import extract_candidate_body, unresolved_placeholders
 from re_agent.verification.objective import verify_candidate
 
 
@@ -47,6 +48,7 @@ def run_fix_loop(
     max_investigations: int = 8,
     candidate_gate: Callable[[ReversalResult], ReversalResult] | None = None,
     max_llm_calls: int = 80,
+    candidate_preflight: Callable[[ReversalResult], ReversalResult] | None = None,
 ) -> ReversalResult:
     """Run the reverser->checker->fix loop up to max_rounds.
 
@@ -128,8 +130,40 @@ def run_fix_loop(
             log_path = log_dir / f"round{round_num}-{timestamp}-reverser.json"
             log_path.write_text(json.dumps(log_entry, indent=2), encoding="utf-8")
 
-        # Check
-        verdict = checker.check(code, target)
+        # Avoid spending a reviewer call on output the configured candidate gate
+        # cannot consume. Keep the same repair/checkpoint path as other failures.
+        preflight_error = None
+        if candidate_gate is not None:
+            try:
+                extract_candidate_body(code)
+            except ValueError as exc:
+                preflight_error = str(exc)
+        placeholders = unresolved_placeholders(code)
+        if placeholders:
+            preflight_error = "Unresolved decompiler placeholders: " + ", ".join(placeholders)
+        if not preflight_error and candidate_preflight is not None:
+            checked = candidate_preflight(ReversalResult(
+                target=target, code=code, success=True, rounds_used=round_num, run_id=run_id,
+            ))
+            if not checked.success:
+                details = []
+                if checked.validation_verdict:
+                    details = [checked.validation_verdict.summary, *checked.validation_verdict.findings]
+                details.extend(f.reason for f in checked.parity_findings)
+                preflight_error = "Local validation preflight failed: " + "; ".join(details)
+        if preflight_error:
+            checker.last_prompt = ""
+            checker.last_response = ""
+            verdict = CheckerVerdict(
+                verdict=Verdict.FAIL,
+                summary="Local candidate preflight failed; model review skipped",
+                issues=[preflight_error],
+                fix_instructions=[
+                    "Resolve the reported issue using binary evidence; do not invent declarations for unknown targets."
+                ],
+            )
+        else:
+            verdict = checker.check(code, target)
         last_verdict = verdict
 
         objective_verdict: ObjectiveVerdict | None = None
@@ -148,6 +182,7 @@ def run_fix_loop(
                 "round": round_num,
                 "timestamp": timestamp,
                 "phase": "check",
+                "checker_skipped": preflight_error is not None,
                 "prompt": checker.last_prompt,
                 "response": checker.last_response,
                 "verdict": verdict.verdict.value,
@@ -174,6 +209,9 @@ def run_fix_loop(
         )
         if candidate_gate is not None:
             result = candidate_gate(result)
+        if objective_verdict is not None and objective_verdict.evidence_conflict:
+            result.success = False
+            result.error = "Stopped: reconcile incompatible structural evidence before retrying"
         gate_issues = [f"parity: {f.reason}" for f in result.parity_findings]
         if result.validation_verdict and result.validation_verdict.verdict != Verdict.PASS:
             gate_issues.extend([result.validation_verdict.summary, *result.validation_verdict.findings])
@@ -183,7 +221,7 @@ def run_fix_loop(
             (log_dir / f"round{round_num}-result.json").write_text(results_to_json([result]), encoding="utf-8")
         if session is not None:
             session.record_checkpoint(result)
-        if result.success:
+        if result.success or (objective_verdict is not None and objective_verdict.evidence_conflict):
             return result
         failure_key = hashlib.sha256(
             json.dumps(

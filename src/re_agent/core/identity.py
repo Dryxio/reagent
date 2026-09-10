@@ -19,6 +19,14 @@ def project_fingerprint(config: ReAgentConfig) -> str:
         "parity": asdict(config.parity),
         "backend": asdict(config.backend),
     }
+    values["validation"].pop("parallel_safe", None)
+    values["models"] = {role: asdict(model) for role, model in (
+        ("reverser", config.agents.reverser or config.llm), ("checker", config.agents.checker or config.llm))}
+    for model in values["models"].values():
+        for key in ("api_key", "timeout_s", "max_budget_usd"):
+            model.pop(key, None)
+    values["acceptance"] = {key: value for key, value in asdict(config.orchestrator).items()
+                            if key.startswith("objective_") or key == "cumulative_validation"}
     digest.update(json.dumps(values, sort_keys=True).encode())
     root = Path(config.project_profile.source_root).resolve()
     digest.update(str(root).encode())

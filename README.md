@@ -1,5 +1,7 @@
 # ReAgent
 
+For a decoupled local progress window with optional worker controls, see the [live monitor guide](docs/live-monitor.md).
+
 [![PyPI](https://img.shields.io/pypi/v/auto-re-agent)](https://pypi.org/project/auto-re-agent/)
 [![Python](https://img.shields.io/pypi/pyversions/auto-re-agent)](https://pypi.org/project/auto-re-agent/)
 [![CI](https://github.com/Dryxio/reagent/actions/workflows/ci.yml/badge.svg)](https://github.com/Dryxio/reagent/actions/workflows/ci.yml)
@@ -242,6 +244,23 @@ llm:
 Claude CLI supports real session resume and reports usage/cost metadata. A
 stale CLI login can still require re-authentication even when its auth-status
 command reports a session.
+
+### Grok Build CLI
+
+Authenticate with `grok login`, then configure:
+
+```yaml
+llm:
+  provider: grok-cli
+  model: "" # Use Grok Build's configured model, or specify a model ID.
+  cli_path: grok
+  timeout_s: 600
+```
+
+Supports native session resume, JSON response validation, usage metadata,
+and tool-free requests from an isolated working directory. Large evidence
+prompts use temporary files. See [Grok Build configuration](docs/grok-build.md)
+for supported settings and limits.
 
 ### OpenAI-compatible APIs
 
@@ -524,3 +543,9 @@ mypy src
 ## License
 
 MIT
+
+### Bounded parallel function processing
+
+Class and manifest runs support provider-independent concurrency with isolated
+workers, durable recovery, and live progress. Sequential execution remains the
+default. See [configuration and behavior](docs/parallel-functions.md).

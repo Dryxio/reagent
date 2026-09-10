@@ -37,7 +37,7 @@ class OpenAIProvider:
         timeout_s: int = 1800,
         base_url: str | None = None,
     ) -> None:
-        self._client = openai.OpenAI(api_key=api_key, base_url=base_url, timeout=timeout_s)
+        self._client = openai.OpenAI(api_key=api_key, base_url=base_url, timeout=timeout_s, max_retries=0)
         self.last_metadata: dict[str, Any] = {}
         self._model = model
         self._max_tokens = max_tokens
@@ -45,6 +45,9 @@ class OpenAIProvider:
         self._conversations: dict[str, list[Message]] = {}
 
     # -- LLMProvider interface ------------------------------------------------
+
+    def close(self) -> None:
+        self._client.close()
 
     def send(self, messages: list[Message], **kwargs: Any) -> str:
         """Send messages via the chat completions API and return the response."""

@@ -117,6 +117,10 @@ class OrchestratorConfig:
     max_investigations: int = 8
     selection_strategy: str = "dependency-order"
     max_attempts_per_function: int = 3
+    max_parallel_functions: int = 1
+    max_parallel_validations: int = 1
+    max_parallel_requests: int = 1
+    max_request_retries: int = 0
 
 
 @dataclass
@@ -142,6 +146,7 @@ class ValidationConfig:
     command_timeout_s: int = 900
     working_directory: str = "."
     keep_project_copy: bool = False
+    parallel_safe: bool = False
 
 
 @dataclass

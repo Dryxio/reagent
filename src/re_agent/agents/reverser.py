@@ -152,7 +152,7 @@ class ReverserAgent:
                 return
             if artifact is None:
                 return
-            content = getattr(artifact, "content", "")
+            content = getattr(artifact, "content", "") or getattr(artifact, "instructions", "")
             if content:
                 if label == "Function evidence bundle" and self._knowledge_graph is not None:
                     self._knowledge_graph.ingest_context(str(content))
@@ -161,6 +161,9 @@ class ReverserAgent:
         caps = self.backend.capabilities
         if getattr(caps, "has_context", False):
             add("Function evidence bundle", getattr(self.backend, "get_context", None), target.address)
+        if getattr(caps, "has_asm", False):
+            add("Disassembly (resolve decompiler jump/call ambiguities)", getattr(self.backend, "get_asm", None),
+                target.address)
         if getattr(caps, "has_vtables", False) and target.class_name:
             add("Vtable", getattr(self.backend, "get_vtable", None), target.class_name)
         if getattr(caps, "has_cfg", False):

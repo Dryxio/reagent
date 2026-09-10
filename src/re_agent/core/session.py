@@ -4,7 +4,11 @@ from __future__ import annotations
 
 import hashlib
 import json
+import threading
 import time
+from collections import Counter
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
@@ -19,9 +23,26 @@ class Session:
 
     def __init__(self, path: str | Path = "re-agent-progress.json") -> None:
         self.path = Path(path)
+        self._lease_owner: int | None = None
         self._data: dict[str, Any] = {"functions": {}, "runs": []}
         if self.path.exists():
             self.load()
+
+    @contextmanager
+    def coordinator(self) -> Iterator[None]:
+        """Lease one session across selection, identity binding, and publication."""
+        owner = threading.get_ident()
+        if getattr(self, "_lease_owner", None) == owner:
+            yield
+            return
+        with file_lock(self.path.with_suffix(".coordinator"), blocking=False):
+            self._lease_owner = owner
+            try:
+                if self.path.exists():
+                    self.load()
+                yield
+            finally:
+                self._lease_owner = None
 
     def load(self) -> None:
         data = json.loads(self.path.read_text(encoding="utf-8"))
@@ -62,7 +83,10 @@ class Session:
         entry = self._data.get("checkpoints", {}).get(normalize_address(address))
         return json.dumps(entry, indent=2) if entry else ""
 
-    def record_result(self, result: ReversalResult) -> None:
+    def record_result_once(self, result: ReversalResult) -> None:
+        self.record_result(result, idempotent=True)
+
+    def record_result(self, result: ReversalResult, *, idempotent: bool = False) -> None:
         addr = normalize_address(result.target.address)
         entry = {
             "address": result.target.address,
@@ -87,6 +111,8 @@ class Session:
         with file_lock(self.path):
             if self.path.exists():
                 self.load()
+            if idempotent and result.run_id and any(r.get("run_id") == result.run_id for r in self._data["runs"]):
+                return
             self._data["functions"][addr] = entry
             self._data["runs"].append(entry)
             self.save()
@@ -100,6 +126,11 @@ class Session:
         """Return True if this address has been attempted (pass or fail)."""
         addr = normalize_address(address)
         return addr in self._data["functions"]
+
+    def attempt_counts(self) -> dict[str, int]:
+        """Build one attempt index for a coordinator, avoiding repeated history scans."""
+        return dict(Counter(normalize_address(str(entry.get("address", "")))
+                            for entry in self._data.get("runs", [])))
 
     def attempt_count(self, address: str) -> int:
         """Return the number of recorded runs for an address."""

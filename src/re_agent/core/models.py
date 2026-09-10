@@ -71,6 +71,7 @@ class ObjectiveVerdict:
     verdict: Verdict
     summary: str
     findings: list[str] = field(default_factory=list)
+    evidence_conflict: bool = False
 
 
 @dataclass

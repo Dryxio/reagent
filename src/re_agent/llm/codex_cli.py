@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from re_agent.llm.protocol import Message
+from re_agent.utils.process import run_process
 
 
 class CodexCLIProvider:
@@ -31,7 +32,7 @@ class CodexCLIProvider:
             out_path = Path(tmp.name)
 
         try:
-            proc = subprocess.run(
+            proc = run_process(
                 [
                     self._codex_bin,
                     "exec",
@@ -46,17 +47,12 @@ class CodexCLIProvider:
                     str(model),
                     "-",
                 ],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                input=prompt,
-                text=True,
-                encoding="utf-8",
-                timeout=self._timeout_s,
-                check=False,
+                input_text=prompt,
+                timeout_s=self._timeout_s,
             )
             if proc.returncode != 0:
                 raise RuntimeError(
-                    f"codex exec failed with exit code {proc.returncode}\n{proc.stdout}"
+                    f"codex exec failed with exit code {proc.returncode}\n{proc.stdout}\n{proc.stderr or ''}"
                 )
             return out_path.read_text(encoding="utf-8")
         except subprocess.TimeoutExpired as exc:

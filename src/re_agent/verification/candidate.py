@@ -14,6 +14,17 @@ from re_agent.config.schema import ValidationConfig
 from re_agent.core.models import FunctionTarget, SourceMatch, ValidationVerdict, Verdict
 from re_agent.utils.process import run_process
 
+_NON_CODE = re.compile(
+    r'//[^\n]*|/\*[\s\S]*?\*/|R"(?P<delimiter>[^ ()\\\t\r\n]{0,16})\([\s\S]*?\)(?P=delimiter)"'
+    r'|"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\''
+)
+
+
+def unresolved_placeholders(code: str) -> list[str]:
+    """Find executable unrecovered-jump placeholders, ignoring comments/literals."""
+    tokens = _NON_CODE.sub(" ", code)
+    return sorted(set(re.findall(r"\bUNRECOVERED_JUMPTABLE(?:_\w+)?\b", tokens)))
+
 
 def extract_candidate_body(code: str) -> str:
     """Extract the outer C++ body from generated code."""
@@ -52,7 +63,8 @@ def create_candidate_overlay(
                 overlay_root,
                 dirs_exist_ok=True,
                 symlinks=True,
-                ignore=shutil.ignore_patterns(".git", ".venv", "build", "reports", "__pycache__", "*.pyc"),
+                ignore=shutil.ignore_patterns(".git", ".venv", "build", "reports", "__pycache__",
+                                               "*.pyc", "*.coordinator.lock"),
             )
             _remap_links(overlay_root, project_root)
         else:
@@ -170,8 +182,13 @@ def validate_candidate(
         except subprocess.TimeoutExpired:
             checks.append({"kind": kind, "verdict": "FAIL", "detail": "timed out"})
             return _failed(f"{kind} command timed out: {command}", candidate_file, findings, checks)
-        tail = "\n".join((proc.stdout + proc.stderr).splitlines()[-20:])
-        findings.append(f"{kind}: {command} -> exit {proc.returncode}\n{tail}".rstrip())
+        # First errors often explain cascades of missing types/declarations.
+        # Keep them alongside the final summary, prioritizing compiler stderr.
+        lines = (proc.stderr + "\n" + proc.stdout).strip().splitlines()
+        if len(lines) > 20:
+            lines = [*lines[:10], "[intermediate output omitted]", *lines[-10:]]
+        excerpt = "\n".join(line[:500] for line in lines)
+        findings.append(f"{kind}: {command} -> exit {proc.returncode}\n{excerpt}".rstrip())
         checks.append({"kind": kind, "verdict": "PASS" if proc.returncode == 0 else "FAIL",
                        "detail": f"exit {proc.returncode}"})
         if proc.returncode != 0:

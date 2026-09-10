@@ -13,3 +13,10 @@ build/
 
 .DS_Store
 .coverage
+
+# Local reconstruction state and generated reports
+/reports/re-agent/
+/re-agent-progress.json*
+*.execution.json
+*.execution.stop
+*.coordinator.lock

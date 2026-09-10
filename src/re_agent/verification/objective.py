@@ -31,6 +31,7 @@ def verify_candidate(
 
     findings: list[str] = []
     checks_run = 0
+    asm = None
 
     try:
         decompile = backend.decompile(target.address)
@@ -112,6 +113,25 @@ def verify_candidate(
         if isinstance(pcode, list):
             pcode = [item for item in pcode if isinstance(item, dict) and item.get("opcode")]
         if isinstance(pcode, list) and pcode:
+            if asm is not None:
+                listed = set(re.findall(r"(?m)^\s*(?:0x)?([0-9a-fA-F]+)\s+", asm.instructions))
+                asm_addresses = {int(address, 16) for address in listed}
+                ir_addresses = {
+                    int(str(item["address"]), 16) for item in pcode
+                    if re.fullmatch(r"(?:0x)?[0-9a-fA-F]+", str(item.get("address", "")))
+                }
+                outside = ir_addresses - asm_addresses
+                if asm_addresses and outside:
+                    return ObjectiveVerdict(
+                        verdict=Verdict.FAIL,
+                        summary="Structural evidence scopes differ; reconcile evidence before repairing code",
+                        findings=[
+                            f"P-code contains {len(outside)} instruction addresses absent from supplied assembly "
+                            f"(first: {min(outside):x}). Expanded tail targets or incomplete exports may explain this; "
+                            "cross-scope branch/call counts cannot establish a candidate mismatch."
+                        ],
+                        evidence_conflict=True,
+                    )
             checks_run += 1
             opcodes = [str(item.get("opcode", "")).upper() for item in pcode if isinstance(item, dict)]
             ir_calls = sum(op in {"CALL", "CALLIND"} for op in opcodes)

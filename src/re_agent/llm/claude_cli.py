@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from re_agent.llm.protocol import Message
+from re_agent.utils.process import run_process
 
 
 @dataclass
@@ -109,12 +110,9 @@ class ClaudeCLIProvider:
         cmd.append(prompt)
 
         try:
-            proc = subprocess.run(
+            proc = run_process(
                 cmd,
-                capture_output=True,
-                text=True,
-                timeout=self._timeout_s,
-                check=False,
+                timeout_s=self._timeout_s,
             )
         except subprocess.TimeoutExpired as exc:
             raise RuntimeError(f"claude CLI timed out after {self._timeout_s}s") from exc

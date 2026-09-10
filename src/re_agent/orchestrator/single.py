@@ -45,8 +45,20 @@ def reverse_single(
             it here to avoid re-scanning the entire source tree each time.
     """
     log_dir = Path(config.output.log_dir) if config.output.log_dir else None
+    checked: ReversalResult | None = None
+
+    def preflight(result: ReversalResult) -> ReversalResult:
+        nonlocal checked
+        checked = validate_result(result, config, backend, indexer)
+        return checked
 
     def gate(result: ReversalResult) -> ReversalResult:
+        if checked is not None and checked.code == result.code:
+            result.validation_verdict = checked.validation_verdict
+            result.parity_status = checked.parity_status
+            result.parity_findings = checked.parity_findings
+            result.success = result.success and checked.success
+            return result
         return validate_result(result, config, backend, indexer)
 
     try:
@@ -68,6 +80,7 @@ def reverse_single(
             investigation_enabled=config.orchestrator.investigation_enabled,
             max_investigations=config.orchestrator.max_investigations,
             candidate_gate=gate,
+            candidate_preflight=preflight if config.validation.enabled else None,
             max_llm_calls=config.orchestrator.max_llm_calls_per_function,
         )
     except (RuntimeError, OSError, ValueError) as exc:
@@ -105,6 +118,18 @@ def _target_to_hook(target: FunctionTarget) -> HookEntry:
 
 
 def validate_result(
+    result: ReversalResult,
+    config: ReAgentConfig,
+    backend: REBackend,
+    indexer: SourceIndexer | None = None,
+) -> ReversalResult:
+    from re_agent.orchestrator.execution import validation_lane
+
+    with validation_lane():
+        return _validate_result(result, config, backend, indexer)
+
+
+def _validate_result(
     result: ReversalResult,
     config: ReAgentConfig,
     backend: REBackend,

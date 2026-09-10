@@ -1,0 +1,621 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Reconstruction · Live</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font:
+          15px/1.5 system-ui,
+          sans-serif;
+        background: #0b1018;
+        color: #e8edf5;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+      }
+      main {
+        max-width: 1240px;
+        margin: auto;
+        padding: 40px 30px;
+      }
+      header,
+      .row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 20px;
+      }
+      .eyebrow {
+        color: #7bdcbe;
+        text-transform: uppercase;
+        letter-spacing: 0.18em;
+        font-size: 11px;
+        font-weight: 750;
+      }
+      h1 {
+        font-size: 32px;
+        letter-spacing: -1px;
+        margin: 7px 0;
+      }
+      h2 {
+        font-size: 16px;
+        margin: 0;
+      }
+      p {
+        color: #97a6ba;
+        margin: 6px 0;
+      }
+      button {
+        border: 1px solid #334055;
+        border-radius: 9px;
+        background: #1b293b;
+        color: #ecf2fa;
+        padding: 11px 18px;
+        cursor: pointer;
+        font-weight: 650;
+      }
+      button:hover {
+        background: #2c3d54;
+      }
+      button:disabled {
+        opacity: 0.4;
+        cursor: default;
+      }
+      #start {
+        background: #8be1c1;
+        color: #10271f;
+        border: 0;
+      }
+      #stop {
+        color: #ffb8b8;
+        border-color: #75474d;
+        background: #2e1c26;
+      }
+      .pill {
+        display: inline-block;
+        padding: 5px 11px;
+        border: 1px solid #354457;
+        border-radius: 50px;
+        font-size: 12px;
+        color: #b9c8dc;
+      }
+      .panel {
+        min-width: 0;
+        overflow-x: auto;
+        background: #121b28;
+        border: 1px solid #253247;
+        border-radius: 14px;
+        padding: 23px;
+        margin-top: 24px;
+      }
+      .stats {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 15px;
+        margin-top: 23px;
+      }
+      .stat {
+        padding: 20px;
+        background: #121b28;
+        border: 1px solid #253247;
+        border-radius: 12px;
+      }
+      .label {
+        font-size: 12px;
+        color: #98a8bd;
+      }
+      .number {
+        font-size: 32px;
+        letter-spacing: -1px;
+        font-weight: 650;
+        margin: 7px 0;
+      }
+      .green {
+        color: #8be1c1;
+      }
+      .amber {
+        color: #f1c681;
+      }
+      .progress {
+        height: 9px;
+        background: #253247;
+        border-radius: 8px;
+        overflow: hidden;
+        margin: 20px 0 12px;
+      }
+      .fill {
+        height: 100%;
+        background: linear-gradient(90deg, #519dc2, #8be1c1);
+        width: 0;
+        transition: width 0.4s;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: 1.1fr 1fr;
+        gap: 20px;
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+        font-size: 12px;
+        margin-top: 12px;
+      }
+      td,
+      th {
+        overflow-wrap: anywhere;
+        text-align: left;
+        padding: 10px 6px;
+        border-bottom: 1px solid #253247;
+      }
+      th {
+        color: #92a4bc;
+        font-weight: 500;
+      }
+      td:first-child {
+        font-family: monospace;
+      }
+      pre {
+        font:
+          12px/1.8 ui-monospace,
+          monospace;
+        white-space: pre-wrap;
+        overflow: auto;
+        max-height: 430px;
+        min-height: 190px;
+        color: #b4c4d9;
+        margin-bottom: 0;
+      }
+      .note {
+        border-left: 3px solid #e0b974;
+        padding-left: 14px;
+        margin-top: 22px;
+        font-size: 13px;
+      }
+      footer {
+        margin-top: 26px;
+        color: #7890ab;
+        font-size: 12px;
+      }
+      #message {
+        min-height: 22px;
+        color: #f1c681;
+        margin-top: 12px;
+      }
+      .error {
+        color: #ffb8b8;
+      }
+      #path {
+        overflow-wrap: anywhere;
+      }
+      .buttons {
+        display: flex;
+        gap: 9px;
+      }
+      @media (max-width: 800px) {
+        .row { flex-wrap: wrap; }
+        .grid {
+          grid-template-columns: 1fr;
+        }
+        .stats {
+          grid-template-columns: repeat(2, 1fr);
+        }
+        header {
+          align-items: flex-start;
+          flex-direction: column;
+        }
+        main {
+          padding: 24px 16px;
+        }
+      }
+      @media (max-width: 420px) {
+        .stat { padding: 12px; }
+        .panel { padding: 14px; }
+        .number { font-size: 27px; }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .fill { transition: none; }
+      }
+      :root { background: #0b0e14; color: #dce3ed; font-size: 14px; }
+      main { max-width: 1500px; padding: 28px 32px; }
+      h1 { font-size: 26px; letter-spacing: -.6px; font-weight: 600; }
+      h3 { font-size: 12px; font-weight: 600; color: #a9b8cb; text-transform: uppercase; letter-spacing: .06em; }
+      .panel, .stat { border-radius: 8px; background: #101620; border-color: #253040; }
+      .panel { padding: 20px; margin-top: 18px; }
+      .eyebrow { color: #86a8f5; letter-spacing: .12em; }
+      .number { font-variant-numeric: tabular-nums; font-size: 30px; }
+      .fill { background: #7aa2f7; }
+      select { background: #172131; color: #dce3ed; border: 1px solid #344359; border-radius: 6px; padding: 10px; max-width: 100%; }
+      .agent-workspace label { max-width: 100%; }
+      .agent-workspace pre { background: #0b1018; border: 1px solid #253040; border-radius: 6px; padding: 16px; max-height: 520px; overflow-wrap: anywhere; }
+      .agent-workspace summary { cursor: pointer; padding: 12px 0; color: #9fb8e8; }
+      button:focus-visible, select:focus-visible, summary:focus-visible { outline: 2px solid #86a8f5; outline-offset: 3px; }
+      @media (max-width: 800px) { main { padding: 20px 12px; } .agent-workspace .row { align-items: stretch; flex-direction: column; } }
+      .terminal-shell { margin-top: 16px; border: 1px solid #344052; border-radius: 8px; overflow: hidden; background: #0c0c0c; }
+      .terminal-toolbar { display: flex; justify-content: space-between; align-items: center; background: #202020; gap: 8px; padding: 6px 8px 0; flex-wrap: wrap; }
+      .terminal-tabs { display: flex; gap: 4px; overflow-x: auto; }
+      .terminal-tabs button { border: 0; border-radius: 6px 6px 0 0; background: transparent; color: #aaa; padding: 10px 18px; white-space: nowrap; }
+      .terminal-tabs button[aria-selected="true"] { background: #0c0c0c; color: #f2f2f2; box-shadow: inset 0 2px #83aaff; }
+      #terminal-follow { font-size: 11px; padding: 5px 9px; margin-bottom: 6px; }
+      .terminal-caption, .terminal-footer { font: 12px Consolas, 'Cascadia Mono', monospace; padding: 10px 16px; color: #a6bad2; overflow-wrap: anywhere; }
+      .terminal-footer { border-top: 1px solid #242424; color: #929292; }
+      .agent-workspace .terminal-shell pre { font: 13px/1.55 'Cascadia Mono', Consolas, monospace; color: #ddd; background: #0c0c0c; border: 0; border-radius: 0; margin: 0; height: clamp(280px, 52vh, 640px); max-height: none; white-space: pre; overflow: auto; overflow-wrap: normal; padding: 8px 16px 20px; tab-size: 4; }
+      .terminal-shell [hidden] { display: none; }
+      @media(max-width: 480px) { .terminal-tabs button { padding: 10px; } }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <div>
+          <div class="eyebrow">ReAgent / local workspace</div>
+          <h1>Reconstruction, live.</h1>
+          <p>Session progress · generation and review</p>
+        </div>
+        <div class="buttons">
+          <button id="start">Start / resume</button
+          ><button id="stop" disabled>Stop run</button>
+        </div>
+      </header>
+      <div id="message" role="status"></div>
+      <section class="panel">
+        <div class="row">
+          <div>
+            <span id="phase" class="pill">Connecting…</span>
+            <p id="batch">Waiting for worker state</p>
+          </div>
+          <div>
+            <strong id="percent">0.00%</strong>
+            <p id="counts">No results yet</p>
+          </div>
+        </div>
+        <div class="progress"><div id="bar" class="fill"></div></div>
+        <p id="activity">Loading live state…</p>
+      </section>
+      <section class="stats">
+        <div class="stat">
+          <div class="label">FUNCTIONS ATTEMPTED</div>
+          <div id="completed" class="number">0</div>
+          <div class="label">Saved final results</div>
+        </div>
+        <div class="stat">
+          <div class="label" id="passed-label">ACCEPTED</div>
+          <div id="passed" class="number green">0</div>
+          <div class="label" id="passed-detail">Passed the configured acceptance gates</div>
+        </div>
+        <div class="stat">
+          <div class="label">NEEDS ATTENTION</div>
+          <div id="failed" class="number amber">0</div>
+          <div class="label">Review or processing failed</div>
+        </div>
+        <div class="stat">
+          <div class="label">REVIEW ROUNDS</div>
+          <div id="rounds" class="number">0</div>
+          <div class="label">Across saved results</div>
+        </div>
+      </section>
+      <div class="note">
+        <strong>Acceptance follows the configured checks.</strong>
+        <p id="result-note">
+          Review passes do not establish compilation or binary equivalence.
+          Inspect the validation outcome separately from model review.
+        </p>
+      </div>
+      <details class="panel" id="run-details" hidden>
+        <summary>Run details &amp; throughput</summary>
+        <table><tbody id="detail-rows"></tbody></table>
+        <p>Awaiting collection includes finished children whose results the parent has not collected yet.</p>
+      </details>
+      <section class="panel" id="parallel" hidden>
+        <h2>Function workers</h2>
+        <p id="queue"></p>
+        <table><thead><tr><th>Address</th><th>Stage</th><th>Calls</th><th>Elapsed</th></tr></thead>
+          <tbody id="jobs"></tbody></table>
+      </section>
+      <section class="panel agent-workspace">
+        <div class="row"><div><div class="eyebrow">Agent workspace</div><h2>Code &amp; execution trace</h2></div>
+        <label>Batch <select id="batch-select" aria-label="Select batch"><option value="">Live batch</option></select></label>
+        <label>Agent <select id="agent-select" aria-label="Select agent"></select></label></div>
+        <p id="agent-state" role="status">Loading agents…</p>
+        <p>All output combines retained activity and responses, grouped by agent. Select an agent to focus. Unattributed text is labelled shared; earlier batches are available from Batch.</p>
+        <div class="terminal-shell">
+          <div class="terminal-toolbar">
+            <div role="tablist" aria-label="Agent output" class="terminal-tabs">
+              <button role="tab" id="tab-code" aria-controls="agent-code" aria-selected="true" data-pane="agent-code">Code</button>
+              <button role="tab" id="tab-log" aria-controls="agent-log" aria-selected="false" tabindex="-1" data-pane="agent-log">Activity</button>
+              <button role="tab" id="tab-response" aria-controls="agent-response" aria-selected="false" tabindex="-1" data-pane="agent-response">Full response</button>
+            </div>
+            <button id="terminal-follow" aria-pressed="true">Following output</button>
+          </div>
+          <div class="terminal-caption">REAGENT &gt; <span id="terminal-context">Agent output</span></div>
+          <pre id="agent-code" role="tabpanel" aria-labelledby="tab-code" tabindex="0"></pre>
+          <pre id="agent-log" role="tabpanel" aria-labelledby="tab-log" tabindex="0" hidden></pre>
+          <pre id="agent-response" role="tabpanel" aria-labelledby="tab-response" tabindex="0" hidden></pre>
+          <div class="terminal-footer">Read-only output · scroll up to pause · Follow output jumps to the latest lines</div>
+        </div>
+      </section>
+      <div class="grid">
+        <section class="panel">
+          <h2>Recent results</h2>
+          <table>
+            <thead>
+              <tr>
+                <th>Address</th>
+                <th>Outcome</th>
+                <th>Review</th>
+                <th>Validation</th>
+                <th>Rounds</th>
+              </tr>
+            </thead>
+            <tbody id="results">
+              <tr>
+                <td colspan="5">Results appear as functions finish.</td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
+        <section class="panel">
+          <div class="row">
+            <h2>Worker activity</h2>
+            <span class="pill">Live</span>
+          </div>
+          <pre id="log">Waiting for activity…</pre>
+        </section>
+      </div>
+      <footer>
+        <div id="connection">Connecting to local host…</div>
+        <p id="path"></p>
+        <p id="control-note">
+          Closing this window leaves the worker running. Stop run ends the
+          active process tree; Start / resume relaunches the configured command;
+          checkpoint recovery depends on that worker.
+        </p>
+      </footer>
+    </main>
+    <script>
+      const token = "__TOKEN__";
+      let busy = false;
+      const el = (id) => document.getElementById(id);
+      const fmt = (n) => Number(n).toLocaleString();
+      let socket;
+      let retryDelay = 1000;
+      let streamWatchdog;
+      let agentRows = [];
+      function render(s) {
+        try {
+          let pct = s.targets
+            ? Math.min(100, (100 * s.completed) / s.targets)
+            : 0;
+          const batchSelection = el("batch-select").value;
+          el("batch-select").replaceChildren(new Option("Live batch", ""));
+          for (const source of s.event_sources || []) el("batch-select").append(new Option(source.split("/")[0], source));
+          el("batch-select").value = batchSelection;
+          if (!batchSelection) agentRows = s.agents || [];
+          const selected = el("agent-select").value;
+          el("agent-select").replaceChildren(new Option("All output", "__all__"));
+          for (const agent of agentRows) {
+            const option = document.createElement("option"); option.value = agent.id;
+            option.textContent = `${agent.label} · ${agent.status}`; el("agent-select").append(option);
+          }
+          if (agentRows.some(a => a.id === selected)) el("agent-select").value = selected;
+          else el("agent-select").value = "__all__";
+          renderAgent();
+          el("phase").textContent = s.phase.replaceAll("-", " ");
+          el("passed-label").textContent = s.passed_label || "ACCEPTED";
+          el("control-note").textContent = s.can_start === false
+            ? "Closing this window leaves the run active. Stop run sends the configured cooperative stop signal. Starting and resuming remain with the external runner."
+            : "Closing this window leaves the worker running. Stop run ends the active process tree; Start / resume relaunches the configured command; checkpoint recovery depends on that worker.";
+          el("passed-detail").textContent = s.passed_detail || "Passed the configured acceptance gates";
+          el("result-note").textContent = s.result_note || "Review passes do not establish compilation or binary equivalence. Inspect the validation outcome separately from model review.";
+          el("batch").textContent = s.progress_summary || (s.controls
+            ? "Worker controls enabled"
+            : "Read-only session monitor");
+          el("percent").textContent = s.targets
+            ? pct.toFixed(2) + "%"
+            : "Total unknown";
+          el("bar").style.width = pct + "%";
+          el("counts").textContent = s.targets
+            ? `${fmt(s.completed)} / ${fmt(s.targets)} attempted`
+            : `${fmt(s.completed)} attempted`;
+          for (let k of ["completed", "passed", "failed", "rounds"])
+            el(k).textContent = fmt(s[k]);
+          el("log").textContent = [s.diagnostics, s.log].filter(Boolean).join("\n\n").replace(/\x1b\[[0-9;]*m/g, "") || "Waiting for worker output…";
+          el("run-details").hidden = !(s.details || []).length;
+          el("detail-rows").replaceChildren();
+          for (const detail of s.details || []) {
+            const tr = document.createElement("tr");
+            for (const value of [detail.label, detail.value]) {
+              const td = document.createElement("td"); td.textContent = value; tr.append(td);
+            }
+            el("detail-rows").append(tr);
+          }
+          let lines = (s.log || "").trim().split("\n");
+          el("activity").textContent = s.error
+            ? JSON.stringify(s.error)
+            : s.activity || lines.at(-1) || "No active function yet";
+          el("results").replaceChildren();
+          for (let row of s.recent) {
+            let tr = document.createElement("tr");
+            for (let v of [
+              row.address,
+              row.result_label || (row.success ? "Accepted" : "Needs attention"),
+              row.verdict || "Not recorded",
+              row.validation_verdict || "Not recorded",
+              row.rounds_used || 0,
+            ]) {
+              let td = document.createElement("td");
+              td.textContent = v;
+              tr.append(td);
+            }
+            tr.children[1].className = row.success ? "green" : "amber";
+            el("results").append(tr);
+          }
+          const runs = s.executions || [];
+          el("parallel").hidden = !runs.length;
+          el("queue").textContent = runs.map(run =>
+            `${run.phase} · ${run.limit} function limit · ${run.queued || 0} functions queued` +
+            (run.requests ? ` · ${run.requests.active}/${run.requests.limit} model requests · ${run.requests.queued} waiting` : "")
+          ).join(" / ");
+          el("jobs").replaceChildren();
+          for (const run of runs) for (const job of run.jobs || []) {
+            if (!["running", "proposed", "interrupted"].includes(job.state)) continue;
+            const tr = document.createElement("tr");
+            const end = job.finished || (run.alive ? Date.now() / 1000 : run.updated);
+            for (const value of [job.address, job.state === "running" ? job.stage || "starting" : job.state,
+                                 job.calls || 0, `${Math.max(0, Math.floor(end - job.started))}s`]) {
+              const td = document.createElement("td");
+              td.textContent = value;
+              tr.append(td);
+            }
+            el("jobs").append(tr);
+          }
+          el("stop").textContent = s.phase === "stopping" ? (s.force_stop === false ? "Stopping…" : "Force stop") : "Stop run";
+          el("start").disabled = busy || s.active || !s.controls || s.can_start === false;
+          el("stop").disabled = busy || !s.active || !s.controls || s.can_stop === false;
+          el("connection").textContent =
+            `Connected · refreshed ${s.updated} · live WebSocket` +
+            (s.data_age_s == null ? "" : ` · source data ${Math.floor(s.data_age_s)}s old`);
+          el("path").textContent = s.output;
+        } catch (e) {
+          el("connection").textContent =
+            "Disconnected — reconnecting. Worker state unknown.";
+          el("start").disabled = true;
+          el("stop").disabled = true;
+        }
+      }
+      async function action(name) {
+        busy = true;
+        el("start").disabled = el("stop").disabled = true;
+        el("message").textContent =
+          name === "stop"
+            ? "Stopping worker and child processes…"
+            : "Starting worker…";
+        try {
+          let r = await fetch("/api/" + name, {
+            method: "POST",
+            headers: { "X-Control-Token": token },
+          });
+          let j = await r.json();
+          if (!r.ok) throw Error(j.error);
+          el("message").textContent = j.message;
+        } catch (e) {
+          el("message").textContent = e.message;
+        } finally {
+          busy = false;
+          if (socket?.readyState !== WebSocket.OPEN) connect();
+        }
+      }
+      el("start").onclick = () => action("start");
+      el("stop").onclick = () => action("stop");
+      function connect() {
+        if (socket && [WebSocket.OPEN, WebSocket.CONNECTING].includes(socket.readyState)) return;
+        socket = new WebSocket(`ws://${location.host}/api/stream`);
+        el("connection").textContent = "Connecting · loading initial snapshot…";
+        const watchdog = () => { clearTimeout(streamWatchdog); streamWatchdog = setTimeout(() => socket.close(), 15000); };
+        watchdog();
+        socket.onmessage = event => {
+          const message = JSON.parse(event.data);
+          if (!["snapshot", "update"].includes(message.type)) return;
+          retryDelay = 1000; watchdog(); render(message.data);
+        };
+        socket.onclose = () => {
+          clearTimeout(streamWatchdog);
+          el("connection").textContent = "Disconnected · last received data retained · reconnecting…";
+          el("start").disabled = el("stop").disabled = true;
+          setTimeout(connect, retryDelay); retryDelay = Math.min(10000, retryDelay * 2);
+        };
+        socket.onerror = () => socket.close();
+      }
+      let activePane = "agent-code";
+      let followOutput = true;
+      function followLatest() {
+        el("terminal-follow").textContent = followOutput ? "Following output" : "Follow output";
+        el("terminal-follow").setAttribute("aria-pressed", String(followOutput));
+        if (followOutput) requestAnimationFrame(() => { const pane = el(activePane); pane.scrollTop = pane.scrollHeight; });
+      }
+      const terminalTabs = [...document.querySelectorAll("[data-pane]")];
+      function selectPane(tab) {
+        activePane = tab.dataset.pane;
+        for (const item of terminalTabs) {
+          const selected = item === tab;
+          item.setAttribute("aria-selected", String(selected)); item.tabIndex = selected ? 0 : -1;
+          el(item.dataset.pane).hidden = !selected;
+        }
+        followLatest();
+      }
+      for (const [index, tab] of terminalTabs.entries()) {
+        tab.onclick = () => selectPane(tab);
+        tab.onkeydown = event => {
+          if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+          event.preventDefault();
+          const next = event.key === "Home" ? 0 : event.key === "End" ? terminalTabs.length - 1
+            : (index + (event.key === "ArrowRight" ? 1 : -1) + terminalTabs.length) % terminalTabs.length;
+          selectPane(terminalTabs[next]); terminalTabs[next].focus();
+        };
+        el(tab.dataset.pane).addEventListener("scroll", () => {
+          const pane = el(tab.dataset.pane);
+          if (pane.hidden) return;
+          followOutput = pane.scrollHeight - pane.clientHeight - pane.scrollTop < 24;
+          el("terminal-follow").textContent = followOutput ? "Following output" : "Follow output";
+          el("terminal-follow").setAttribute("aria-pressed", String(followOutput));
+        });
+      }
+      el("terminal-follow").onclick = () => { followOutput = !followOutput; followLatest(); };
+      function renderAgent() {
+        const all = el("agent-select").value === "__all__";
+        const grouped = (rows, field) => rows.filter(a => a[field]).map(a => `=== ${a.label} [${a.status}] ===\n${a[field]}`).join("\n\n");
+        const combined = agentRows.filter(a => a.text || a.log).map(a =>
+          `=== ${a.label} [${a.status}] ===\n${[a.log, a.text].filter(Boolean).join("\n\n")}`).join("\n\n");
+        const agent = all ? {id: "__all__", label: "All output", status: "Combined retained output",
+          text: combined, log: grouped(agentRows, "log")} : agentRows.find(a => a.id === el("agent-select").value);
+        el("agent-state").textContent = agent ? `${agent.status} · ${agent.id}` : "Waiting for agent events";
+        el("terminal-context").textContent = agent?.label || "Agent output";
+        const text = agent?.text || "";
+        const blocks = [...text.matchAll(/```(?:cpp|c\+\+|cxx)?\s*\n([\s\S]*?)(?:```|$)/g)];
+        const values = {
+          "agent-code": all ? agentRows.filter(a => !a.id.endsWith(":shared")).map(a => {
+            const code = [...(a.text || "").matchAll(/```(?:cpp|c\+\+|cxx)?\s*\n([\s\S]*?)(?:```|$)/g)].map(m => m[1]).join("\n\n");
+            return code ? `// ${a.label}\n${code}` : "";
+          }).filter(Boolean).join("\n\n") || "No attributed candidate code yet." : agent?.id.endsWith(":shared")
+            ? "Select an individual agent to inspect its candidate code.\nThe shared response can interleave output from several agents; see Full response."
+            : blocks.map(m => m[1]).join("\n\n") || "Code appears here as it becomes available.",
+          "agent-response": text || "No response text yet.",
+          "agent-log": agent?.log || "No activity recorded yet."
+        };
+        for (const [id, value] of Object.entries(values)) {
+          const pane = el(id); const position = pane.scrollTop;
+          if (pane.textContent !== value) pane.textContent = value;
+          if (!followOutput) pane.scrollTop = position;
+        }
+        followLatest();
+      }
+      el("batch-select").onchange = async () => {
+        const source = el("batch-select").value;
+        if (!source) return;
+        try {
+          const response = await fetch(`/api/agent-history?source=${encodeURIComponent(source)}`);
+          if (!response.ok) throw Error("Cannot load agent history");
+          const history = await response.json();
+          if (el("batch-select").value !== source) return;
+          agentRows = history.agents;
+          el("agent-select").replaceChildren(new Option("All output", "__all__"));
+          for (const agent of agentRows) el("agent-select").append(new Option(`${agent.label} · ${agent.status}`, agent.id));
+          renderAgent();
+          if (history.truncated) el("agent-state").textContent += " · history truncated at 32 MiB";
+        } catch (error) { el("agent-state").textContent = error.message; }
+      };
+      el("agent-select").onchange = () => {
+        followOutput = true;
+        if (el("agent-select").value === "__all__") selectPane(terminalTabs[2]);
+        renderAgent();
+      };
+      selectPane(terminalTabs[2]);
+      connect();
+    </script>
+  </body>
+</html>

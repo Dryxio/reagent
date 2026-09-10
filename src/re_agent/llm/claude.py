@@ -31,7 +31,7 @@ class ClaudeProvider:
         temperature: float = 0.0,
         timeout_s: int = 1800,
     ) -> None:
-        self._client = anthropic.Anthropic(api_key=api_key, timeout=timeout_s)
+        self._client = anthropic.Anthropic(api_key=api_key, timeout=timeout_s, max_retries=0)
         self.last_metadata: dict[str, Any] = {}
         self._model = model
         self._max_tokens = max_tokens
@@ -39,6 +39,9 @@ class ClaudeProvider:
         self._conversations: dict[str, list[Message]] = {}
 
     # -- LLMProvider interface ------------------------------------------------
+
+    def close(self) -> None:
+        self._client.close()
 
     def send(self, messages: list[Message], **kwargs: Any) -> str:
         """Send messages to Claude and return the assistant response text."""
