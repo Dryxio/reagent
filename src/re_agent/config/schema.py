@@ -119,6 +119,8 @@ class OrchestratorConfig:
     max_attempts_per_function: int = 3
     max_parallel_functions: int = 1
     max_parallel_validations: int = 1
+    max_parallel_requests: int = 1
+    max_request_retries: int = 0
 
 
 @dataclass

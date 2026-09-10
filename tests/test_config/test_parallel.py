@@ -44,3 +44,15 @@ def test_semantic_identity_tracks_models_and_acceptance_not_scheduling(tmp_path)
     config.llm.model = ReAgentConfig().llm.model
     config.orchestrator.objective_verifier_enabled = not config.orchestrator.objective_verifier_enabled
     assert project_fingerprint(config) != original
+
+
+@pytest.mark.parametrize("name,value", [("max_parallel_requests", 0), ("max_parallel_requests", 33),
+                                       ("max_parallel_requests", True), ("max_request_retries", -1),
+                                       ("max_request_retries", 4)])
+def test_invalid_request_controls(name, value):
+    from re_agent.config.loader import validate_config
+    from re_agent.config.schema import ReAgentConfig
+    config = ReAgentConfig()
+    setattr(config.orchestrator, name, value)
+    with pytest.raises(ValueError, match=name):
+        validate_config(config)

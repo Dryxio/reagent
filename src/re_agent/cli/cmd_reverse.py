@@ -28,7 +28,7 @@ def cmd_reverse(args: argparse.Namespace) -> int:
     if args.skip_parity:
         config.parity.enabled = False
 
-    for name in ("max_parallel_functions", "max_parallel_validations"):
+    for name in ("max_parallel_functions", "max_parallel_validations", "max_parallel_requests"):
         value = getattr(args, name, None)
         if value is not None:
             setattr(config.orchestrator, name, value)

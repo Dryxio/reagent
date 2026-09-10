@@ -363,7 +363,8 @@
           const runs = s.executions || [];
           el("parallel").hidden = !runs.length;
           el("queue").textContent = runs.map(run =>
-            `${run.phase} · ${run.limit} worker limit · ${run.queued || 0} queued`
+            `${run.phase} · ${run.limit} function limit · ${run.queued || 0} functions queued` +
+            (run.requests ? ` · ${run.requests.active}/${run.requests.limit} model requests · ${run.requests.queued} waiting` : "")
           ).join(" / ");
           el("jobs").replaceChildren();
           for (const run of runs) for (const job of run.jobs || []) {

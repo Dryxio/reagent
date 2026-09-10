@@ -33,7 +33,7 @@ from re_agent.core.models import (
 from re_agent.core.session import Session
 from re_agent.llm.protocol import LLMProvider
 from re_agent.orchestrator.dependencies import prerequisites
-from re_agent.orchestrator.execution import Cancelled, Execution, executing
+from re_agent.orchestrator.execution import Cancelled, Execution, RequestQueue, executing
 from re_agent.orchestrator.single import reverse_single
 from re_agent.reports.formatter import _result_to_dict
 from re_agent.utils.address import normalize_address
@@ -130,7 +130,8 @@ def reverse_parallel(
     if limit < 1:
         raise ValueError("Function attempt limit must be positive")
     policy = asdict(config.orchestrator)
-    for key in ("max_parallel_functions", "max_parallel_validations", "max_functions_per_class"):
+    for key in ("max_parallel_functions", "max_parallel_validations", "max_parallel_requests",
+                "max_functions_per_class"):
         policy.pop(key, None)
     models = [asdict(c) for c in (config.agents.reverser or config.llm, config.agents.checker or config.llm)]
     for model in models:
@@ -169,6 +170,7 @@ def _run(targets: list[FunctionTarget], config: ReAgentConfig, backend: REBacken
     stop.unlink(missing_ok=True)
     events: queue.Queue[Event] = queue.Queue()
     gate = threading.Semaphore(config.orchestrator.max_parallel_validations)
+    requests = RequestQueue(config.orchestrator.max_parallel_requests)
     backend_lock = threading.Lock()
     generation_lock = threading.Lock()
     futures: dict[Future[ReversalResult], str] = {}
@@ -197,7 +199,7 @@ def _run(targets: list[FunctionTarget], config: ReAgentConfig, backend: REBacken
         visible += [v for v in jobs.values() if v["state"] not in {"running", "proposed"}][-32:]
         atomic_json(status, {"schema_version": 1, "phase": "stopping" if cancel.is_set() else "running",
             "pid": os.getpid(), "created": created, "run_id": root.name,
-            "limit": config.orchestrator.max_parallel_functions,
+            "limit": config.orchestrator.max_parallel_functions, "requests": requests.snapshot(),
             "queued": sum(a not in completed and a not in active and
                           attempts.get(a, 0) < config.orchestrator.max_attempts_per_function for a in order),
             "jobs": [{k: v for k, v in j.items() if k not in {"checkpoint", "result"}} for j in visible],
@@ -236,7 +238,7 @@ def _run(targets: list[FunctionTarget], config: ReAgentConfig, backend: REBacken
     def emit(job: str, kind: str, value: Any) -> None:
         event = Event(job, kind, value, threading.Event())
         events.put(event)
-        if kind in {"stage", "fatal"}:
+        if kind in {"stage", "fatal", "request_timing"}:
             return
         while not event.ack.wait(.1):
             if cancel.is_set():
@@ -261,7 +263,8 @@ def _run(targets: list[FunctionTarget], config: ReAgentConfig, backend: REBacken
         try:
             from re_agent.orchestrator.snapshot import project_snapshot
 
-            with (executing(Execution(cancel, gate, lambda kind, value: emit(job, kind, value))),
+            with (executing(Execution(cancel, gate, lambda kind, value: emit(job, kind, value),
+                                      requests, config.orchestrator.max_request_retries)),
                   project_snapshot(isolated, generation_lock) if promote else nullcontext(isolated) as isolated):
                 try:
                     providers = [factory(isolated.agents.reverser or isolated.llm)]
@@ -302,6 +305,9 @@ def _run(targets: list[FunctionTarget], config: ReAgentConfig, backend: REBacken
                     value.update(checkpoint=_result_to_dict(event.value), rounds=event.value.rounds_used)
                     event.value.run_id = event.job
                     session.record_checkpoint(event.value)
+                elif event.kind == "request_timing":
+                    for key, duration in event.value.items():
+                        value[key] = value.get(key, 0.0) + duration
                 elif event.kind == "call":
                     value["calls"] = value.get("calls", 0) + 1
                 else:

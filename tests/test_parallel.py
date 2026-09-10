@@ -84,6 +84,7 @@ def test_cancel_late_result_and_resume_budget(setup, monkeypatch):
 
     monkeypatch.setattr("re_agent.orchestrator.parallel.reverse_single", resumed)
     config.orchestrator.max_parallel_functions = 4
+    config.orchestrator.max_parallel_requests = 2
     result = reverse_parallel(targets[:1], config, backend, session, lambda c: Mock(), 1)
     assert budgets == [(config.orchestrator.max_llm_calls_per_function - 1,
                         config.orchestrator.max_review_rounds - 1)]

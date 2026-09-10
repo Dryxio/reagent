@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import time
+from contextlib import nullcontext, suppress
 from dataclasses import asdict, dataclass, is_dataclass
 from pathlib import Path
 from typing import Any
@@ -50,13 +51,41 @@ class ObservedProvider:
     def _call(self, **request: Any) -> str:
         from re_agent.orchestrator.execution import current, progress
 
+        context = current()
+        retries = context.request_retries if context else 0
+        for attempt in range(retries + 1):
+            progress("waiting-for-model")
+            admission = context.requests.acquire(context) if context and context.requests else nullcontext(0.0)
+            try:
+                with admission as waited:
+                    return self._call_once(waited, **request)
+            except Exception as exc:
+                # Only explicit rate limits are safe to retry automatically.
+                if getattr(exc, "status_code", None) != 429:
+                    raise
+                delay = min(60.0, 2.0 ** attempt)
+                with suppress(AttributeError, TypeError, ValueError):
+                    headers = getattr(getattr(exc, "response", None), "headers", {})
+                    delay = min(60.0, max(delay, float(headers.get("retry-after", delay))))
+                if context and context.requests:
+                    context.requests.defer(delay)
+                if attempt == retries:
+                    raise
+                progress("rate-limit-backoff")
+                if context and context.cancel.wait(delay):
+                    context.check()
+        raise AssertionError("unreachable")
+
+    def _call_once(self, waited: float, **request: Any) -> str:
+        from re_agent.orchestrator.execution import current, progress
+
         progress(self.role)
         context = current()
         number = self.budget.consume()
         if context:
             context.emit("call", self.role)
         start = time.monotonic()
-        event: dict[str, Any] = {"role": self.role, "call": number, "request": request}
+        event: dict[str, Any] = {"role": self.role, "call": number, "request": request, "queue_wait_s": waited}
         try:
             if "messages" in request:
                 response = self.provider.send(request["messages"], **request["kwargs"])
@@ -75,6 +104,8 @@ class ObservedProvider:
         finally:
             event["duration_s"] = time.monotonic() - start
             event["metadata"] = self.last_metadata
+            if context:
+                context.emit("request_timing", {"queue_wait_s": waited, "request_s": event["duration_s"]})
             if self.log_dir:
 
                 def encode(value: Any) -> Any:

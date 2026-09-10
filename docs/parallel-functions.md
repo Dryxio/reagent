@@ -7,8 +7,10 @@ registered provider. The default remains the existing sequential pipeline.
 
 ```yaml
 orchestrator:
-  max_parallel_functions: 4
+  max_parallel_functions: 32
+  max_parallel_requests: 4
   max_parallel_validations: 1
+  max_request_retries: 0
 ```
 
 Or override the limits for an invocation:
@@ -121,3 +123,23 @@ they do not predict real model throughput or reconstruction quality.
 
 Grok Build uses this same scheduler. Grok-managed subagents are still disabled;
 this feature does not enable a provider-specific swarm mode.
+
+
+## Model request admission
+
+`max_parallel_requests` (1–32, default 1) is independent of function and validation
+limits. One FIFO queue serves reverser and checker calls across the run. Waiting
+for a slot is cancellable and does not spend a model call. Providers are invoked
+only after admission and durable call-budget reservation. Slots are released on
+success, failure, and cancellation. Each call log records `queue_wait_s` separately
+from its request `duration_s`; execution status exposes active and queued requests.
+The monitor displays both function and model-request counts.
+
+`max_request_retries` (0–3, default 0) enables bounded retries for explicit HTTP 429
+exceptions only. Every retry consumes the same function call budget. Retry-After
+seconds and exponential delay feed a shared cooldown, capped at 60 seconds; waits
+are cancellable and do not hold a request slot. Authentication, ambiguous network
+errors, and CLI diagnostics are not guessed to be retryable. Grok CLI errors do
+not currently expose a typed HTTP status and therefore are not automatically retried.
+Request retries apply to the parallel worker execution context. Changing the request
+concurrency limit preserves interrupted attempt budgets and accepted results.
