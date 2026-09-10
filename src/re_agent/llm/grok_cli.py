@@ -9,6 +9,7 @@ import tempfile
 import uuid
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 from re_agent.llm.protocol import Message
 from re_agent.utils.process import run_process
@@ -29,10 +30,13 @@ class GrokCLIProvider:
         self.last_metadata: dict[str, Any] = {}
 
     @staticmethod
-    def _isolated_environment(workspace: Path) -> dict[str, str]:
+    def _isolated_environment(workspace: Path, *, home: Path | None = None,
+                              native_subagents: bool = False) -> dict[str, str]:
         """Use Grok's supported home/auth overrides without copying credentials."""
         original = Path(os.environ.get("GROK_HOME", str(Path.home() / ".grok"))).resolve()
-        home = workspace / "grok-home"
+        home = home if home is not None else workspace / "grok-home"
+        if native_subagents and os.name == "nt":
+            _validate_native_session_path(str(home.resolve()), str(workspace.resolve()))
         home.mkdir(mode=0o700)
         # Keep local managed requirements as well as system-level policies.
         for name in ("requirements.toml", "managed_config.toml"):
@@ -128,3 +132,16 @@ class GrokCLIProvider:
             raise RuntimeError(f"Grok CLI not found: {self._grok_bin}") from exc
         finally:
             path.unlink(missing_ok=True)
+
+
+def _validate_native_session_path(home: str, workspace: str) -> None:
+    """Reserve room for Grok's atomic child-file writes below Windows MAX_PATH."""
+    session_id = "0" * 36
+    projected = (home + "\\sessions\\" + quote(workspace, safe="") + "\\" + session_id
+                 + "\\subagents\\" + session_id + "\\output.json")
+    units = len(projected.encode("utf-16-le")) // 2
+    if units > 240:
+        raise ValueError(
+            f"Grok native session path would use {units} characters (safe limit 240). "
+            "Choose a shorter isolated home or working directory before starting subagents."
+        )

@@ -78,3 +78,14 @@ shared stream; child results are assigned only by provider task IDs. Thought eve
 are excluded. Each agent text/log tail is bounded to 64 KiB, with at most 128 recent
 agents retained. Historical reads are limited to 32 MiB per source. The source must
 match the configured pattern inside the run directory.
+
+## Native Windows session storage
+
+Keep native CLI session storage separate from deeply nested report directories.
+Grok embeds the encoded working directory and two session IDs in child output
+paths. On Windows, native callers can pass an explicitly allocated short `home`
+to `GrokCLIProvider._isolated_environment(..., native_subagents=True)`. The helper
+checks a conservative 240-character output-path budget before creating the home.
+It preserves the original auth path and managed requirements without copying
+credentials. The caller owns the separate home and its retention/cleanup. Use a
+new isolated directory for a clean run; existing homes are never overwritten.

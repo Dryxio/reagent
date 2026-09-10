@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from re_agent.config.schema import LLMConfig
-from re_agent.llm.grok_cli import GrokCLIProvider
+from re_agent.llm.grok_cli import GrokCLIProvider, _validate_native_session_path
 from re_agent.llm.protocol import Message
 from re_agent.llm.registry import create_provider
 
@@ -96,6 +96,32 @@ def test_unknown_conversation_and_unsupported_budget():
         GrokCLIProvider().resume("missing", "prompt")
     with pytest.raises(ValueError, match="max_budget_usd"):
         create_provider(LLMConfig(provider="grok-cli", max_budget_usd=1))
+
+
+def test_native_path_budget_rejects_nested_home_but_accepts_short_home():
+    workspace = r"D:\example-project\reports\native-full-20260910-104947\batch-0010"
+    with pytest.raises(ValueError, match="shorter isolated home"):
+        _validate_native_session_path(workspace + r"\grok-home", workspace)
+    _validate_native_session_path(r"D:\rg\12345678\batch-0010", workspace)
+
+
+def test_external_isolated_home_does_not_copy_auth_or_modify_workspace(tmp_path, monkeypatch):
+    original = tmp_path / "original"
+    original.mkdir()
+    (original / "managed_config.toml").write_text("[models]\nmax_retries=0\n")
+    monkeypatch.setenv("GROK_HOME", str(original))
+    monkeypatch.setenv("GROK_AUTH_PATH", str(original / "auth.json"))
+    workspace = tmp_path / "reports"
+    workspace.mkdir()
+    home = tmp_path / "isolated"
+    env = GrokCLIProvider._isolated_environment(workspace, home=home)
+    assert env["GROK_HOME"] == str(home)
+    assert env["GROK_AUTH_PATH"] == str(original / "auth.json")
+    assert not (home / "auth.json").exists()
+    assert (home / "managed_config.toml").exists()
+    assert not (workspace / "grok-home").exists()
+    with pytest.raises(FileExistsError):
+        GrokCLIProvider._isolated_environment(workspace, home=home)
 
 
 def test_isolated_home_preserves_auth_location_and_local_requirements(tmp_path, monkeypatch):
