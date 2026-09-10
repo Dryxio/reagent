@@ -41,6 +41,7 @@ dependencies = [
     "anthropic>=0.40",
     "openai>=1.0",
     "psutil>=7.0",
+    "wsproto>=1.2,<2",
 ]
 
 [project.optional-dependencies]

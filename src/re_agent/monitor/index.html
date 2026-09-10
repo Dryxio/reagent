@@ -221,6 +221,21 @@
       @media (prefers-reduced-motion: reduce) {
         .fill { transition: none; }
       }
+      :root { background: #0b0e14; color: #dce3ed; font-size: 14px; }
+      main { max-width: 1500px; padding: 28px 32px; }
+      h1 { font-size: 26px; letter-spacing: -.6px; font-weight: 600; }
+      h3 { font-size: 12px; font-weight: 600; color: #a9b8cb; text-transform: uppercase; letter-spacing: .06em; }
+      .panel, .stat { border-radius: 8px; background: #101620; border-color: #253040; }
+      .panel { padding: 20px; margin-top: 18px; }
+      .eyebrow { color: #86a8f5; letter-spacing: .12em; }
+      .number { font-variant-numeric: tabular-nums; font-size: 30px; }
+      .fill { background: #7aa2f7; }
+      select { background: #172131; color: #dce3ed; border: 1px solid #344359; border-radius: 6px; padding: 10px; max-width: 100%; }
+      .agent-workspace label { max-width: 100%; }
+      .agent-workspace pre { background: #0b1018; border: 1px solid #253040; border-radius: 6px; padding: 16px; max-height: 520px; overflow-wrap: anywhere; }
+      .agent-workspace summary { cursor: pointer; padding: 12px 0; color: #9fb8e8; }
+      button:focus-visible, select:focus-visible, summary:focus-visible { outline: 2px solid #86a8f5; outline-offset: 3px; }
+      @media (max-width: 800px) { main { padding: 20px 12px; } .agent-workspace .row { align-items: stretch; flex-direction: column; } }
     </style>
   </head>
   <body>
@@ -280,8 +295,8 @@
           Inspect the validation outcome separately from model review.
         </p>
       </div>
-      <section class="panel" id="run-details" hidden>
-        <h2>Run details</h2>
+      <details class="panel" id="run-details" hidden>
+        <summary>Run details &amp; throughput</summary>
         <table><tbody id="detail-rows"></tbody></table>
         <p>Awaiting collection includes finished children whose results the parent has not collected yet.</p>
       </section>
@@ -290,6 +305,16 @@
         <p id="queue"></p>
         <table><thead><tr><th>Address</th><th>Stage</th><th>Calls</th><th>Elapsed</th></tr></thead>
           <tbody id="jobs"></tbody></table>
+      </section>
+      <section class="panel agent-workspace">
+        <div class="row"><div><div class="eyebrow">Agent workspace</div><h2>Code &amp; execution trace</h2></div>
+        <label>Batch <select id="batch-select" aria-label="Select batch"><option value="">Live batch</option></select></label>
+        <label>Agent <select id="agent-select" aria-label="Select agent"></select></label></div>
+        <p id="agent-state" role="status">Loading agents…</p>
+        <p>Unattributed native tokens stay in the shared stream. Individual agent responses appear when identified by the provider. Recent history is bounded.</p>
+        <div class="grid"><div><h3>Candidate code</h3><pre id="agent-code"></pre></div>
+        <div><h3>Activity / errors</h3><pre id="agent-log"></pre></div></div>
+        <details><summary>Full response / evidence notes</summary><pre id="agent-response"></pre></details>
       </section>
       <div class="grid">
         <section class="panel">
@@ -334,19 +359,29 @@
       let busy = false;
       const el = (id) => document.getElementById(id);
       const fmt = (n) => Number(n).toLocaleString();
-      let refreshing = false;
-      async function refresh() {
-        if (refreshing) return;
-        refreshing = true;
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 8000);
+      let socket;
+      let retryDelay = 1000;
+      let streamWatchdog;
+      let agentRows = [];
+      function render(s) {
         try {
-          let r = await fetch("/api/status", {signal: controller.signal, cache: "no-store"});
-          if (!r.ok) throw Error("Host unavailable");
-          let s = await r.json();
           let pct = s.targets
             ? Math.min(100, (100 * s.completed) / s.targets)
             : 0;
+          const batchSelection = el("batch-select").value;
+          el("batch-select").replaceChildren(new Option("Live batch", ""));
+          for (const source of s.event_sources || []) el("batch-select").append(new Option(source.split("/")[0], source));
+          el("batch-select").value = batchSelection;
+          if (!batchSelection) agentRows = s.agents || [];
+          const selected = el("agent-select").value;
+          el("agent-select").replaceChildren();
+          for (const agent of agentRows) {
+            const option = document.createElement("option"); option.value = agent.id;
+            option.textContent = `${agent.label} · ${agent.status}`; el("agent-select").append(option);
+          }
+          if (agentRows.some(a => a.id === selected)) el("agent-select").value = selected;
+          else if (agentRows.some(a => a.id.endsWith(":shared"))) el("agent-select").value = agentRows.find(a => a.id.endsWith(":shared")).id;
+          renderAgent();
           el("phase").textContent = s.phase.replaceAll("-", " ");
           el("passed-label").textContent = s.passed_label || "ACCEPTED";
           el("control-note").textContent = s.can_start === false
@@ -366,7 +401,7 @@
             : `${fmt(s.completed)} attempted`;
           for (let k of ["completed", "passed", "failed", "rounds"])
             el(k).textContent = fmt(s[k]);
-          el("log").textContent = [s.diagnostics, s.log].filter(Boolean).join("\n\n") || "Waiting for worker output…";
+          el("log").textContent = [s.diagnostics, s.log].filter(Boolean).join("\n\n").replace(/\x1b\[[0-9;]*m/g, "") || "Waiting for worker output…";
           el("run-details").hidden = !(s.details || []).length;
           el("detail-rows").replaceChildren();
           for (const detail of s.details || []) {
@@ -420,7 +455,7 @@
           el("start").disabled = busy || s.active || !s.controls || s.can_start === false;
           el("stop").disabled = busy || !s.active || !s.controls || s.can_stop === false;
           el("connection").textContent =
-            `Connected · refreshed ${s.updated} · updates every 2 seconds` +
+            `Connected · refreshed ${s.updated} · live WebSocket` +
             (s.data_age_s == null ? "" : ` · source data ${Math.floor(s.data_age_s)}s old`);
           el("path").textContent = s.output;
         } catch (e) {
@@ -428,9 +463,6 @@
             "Disconnected — reconnecting. Worker state unknown.";
           el("start").disabled = true;
           el("stop").disabled = true;
-        } finally {
-          clearTimeout(timeout);
-          refreshing = false;
         }
       }
       async function action(name) {
@@ -452,13 +484,56 @@
           el("message").textContent = e.message;
         } finally {
           busy = false;
-          await refresh();
+          if (socket?.readyState !== WebSocket.OPEN) connect();
         }
       }
       el("start").onclick = () => action("start");
       el("stop").onclick = () => action("stop");
-      refresh();
-      setInterval(refresh, 2000);
+      function connect() {
+        if (socket && [WebSocket.OPEN, WebSocket.CONNECTING].includes(socket.readyState)) return;
+        socket = new WebSocket(`ws://${location.host}/api/stream`);
+        el("connection").textContent = "Connecting · loading initial snapshot…";
+        const watchdog = () => { clearTimeout(streamWatchdog); streamWatchdog = setTimeout(() => socket.close(), 15000); };
+        watchdog();
+        socket.onmessage = event => {
+          const message = JSON.parse(event.data);
+          if (!["snapshot", "update"].includes(message.type)) return;
+          retryDelay = 1000; watchdog(); render(message.data);
+        };
+        socket.onclose = () => {
+          clearTimeout(streamWatchdog);
+          el("connection").textContent = "Disconnected · last received data retained · reconnecting…";
+          el("start").disabled = el("stop").disabled = true;
+          setTimeout(connect, retryDelay); retryDelay = Math.min(10000, retryDelay * 2);
+        };
+        socket.onerror = () => socket.close();
+      }
+      function renderAgent() {
+        const agent = agentRows.find(a => a.id === el("agent-select").value);
+        el("agent-state").textContent = agent ? `${agent.status} · ${agent.id}` : "Waiting for agent events";
+        const text = agent?.text || "";
+        const blocks = [...text.matchAll(/```(?:cpp|c\+\+|cxx)?\s*\n([\s\S]*?)(?:```|$)/g)];
+        el("agent-code").textContent = blocks.map(m => m[1]).join("\n\n") || "Code appears here as it becomes available.";
+        el("agent-response").textContent = text || "No response text yet.";
+        el("agent-log").textContent = agent?.log || "No activity recorded yet.";
+      }
+      el("batch-select").onchange = async () => {
+        const source = el("batch-select").value;
+        if (!source) return;
+        try {
+          const response = await fetch(`/api/agent-history?source=${encodeURIComponent(source)}`);
+          if (!response.ok) throw Error("Cannot load agent history");
+          const history = await response.json();
+          if (el("batch-select").value !== source) return;
+          agentRows = history.agents;
+          el("agent-select").replaceChildren();
+          for (const agent of agentRows) el("agent-select").append(new Option(`${agent.label} · ${agent.status}`, agent.id));
+          renderAgent();
+          if (history.truncated) el("agent-state").textContent += " · history truncated at 32 MiB";
+        } catch (error) { el("agent-state").textContent = error.message; }
+      };
+      el("agent-select").onchange = renderAgent;
+      connect();
     </script>
   </body>
 </html>

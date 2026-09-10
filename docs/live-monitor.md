@@ -67,5 +67,14 @@ a freshness indication, not proof that a process has exited.
 Compiled drafts are explicitly distinguished from accepted reconstructions.
 Child counts describe starts and collected results, not measured model-request
 concurrency. The existing layout displays elapsed time, throughput, batch
-progress, diagnostics and source-data age. Browser refreshes run every two
-seconds, do not overlap, and time out after eight seconds.
+progress, diagnostics and source-data age. The browser receives an initial snapshot over `/api/stream`, followed by WebSocket
+updates. Reconnects load a fresh snapshot; no periodic browser status requests are used.
+The host checks local progress files every 500 ms. Controls remain authenticated HTTP POSTs.
+
+Use `--event-glob "batch-*/native.jsonl"` to enable the agent workspace for native
+Grok event logs. Select the live batch or an earlier batch, then an agent to inspect
+its code, full response, and tool activity. Unattributed token events stay in a
+shared stream; child results are assigned only by provider task IDs. Thought events
+are excluded. Each agent text/log tail is bounded to 64 KiB, with at most 128 recent
+agents retained. Historical reads are limited to 32 MiB per source. The source must
+match the configured pattern inside the run directory.

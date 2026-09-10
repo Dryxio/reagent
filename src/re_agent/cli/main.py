@@ -24,6 +24,7 @@ def build_parser() -> argparse.ArgumentParser:
     monitor_p.add_argument("--port", type=int, default=8765)
     monitor_p.add_argument("--progress-file", help="Relative external batch progress JSON file")
     monitor_p.add_argument("--stop-file", help="Relative cooperative stop file for the external runner")
+    monitor_p.add_argument("--event-glob", help="Relative native agent JSONL event-log pattern")
     monitor_p.add_argument("--worker", nargs=argparse.REMAINDER, help="Optional worker argv; must be the last option")
 
     doctor_p = sub.add_parser("doctor", help="Check configuration and exported evidence without LLM calls")

@@ -5,13 +5,16 @@ import contextlib
 import json
 import os
 import secrets
+import select
 import subprocess
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
+from urllib.parse import parse_qs, urlsplit
 
+from re_agent.monitor.events import AgentEvents
 from re_agent.utils.storage import atomic_json, file_lock
 
 
@@ -28,10 +31,11 @@ class Monitor:
 
     def __init__(self, work_dir: Path, state_dir: Path, session_globs: list[str],
                  log_glob: str | None = None, total: int = 0, worker: list[str] | None = None,
-                 progress_file: str | None = None, stop_file: str | None = None) -> None:
+                 progress_file: str | None = None, stop_file: str | None = None,
+                 event_glob: str | None = None) -> None:
         if total < 0:
             raise ValueError("Total function count must be nonnegative")
-        for pattern in [*session_globs, *([log_glob] if log_glob else [])]:
+        for pattern in [*session_globs, *([log_glob] if log_glob else []), *([event_glob] if event_glob else [])]:
             if Path(pattern).anchor or ".." in Path(pattern).parts:
                 raise ValueError("Monitor patterns must be relative to the working directory")
         self.work_dir = work_dir.resolve()
@@ -48,6 +52,8 @@ class Monitor:
         self.state_dir = state_dir.resolve()
         self.session_globs = session_globs
         self.log_glob = log_glob
+        self.event_glob = event_glob
+        self.agent_events = AgentEvents()
         self.total = total
         self.worker = worker or []
         self.record = self.state_dir / "worker.json"
@@ -60,7 +66,7 @@ class Monitor:
                 raise RuntimeError("Worker controls require: pip install 'auto-re-agent[monitor]'") from exc
             self.psutil = psutil
         self.lock = threading.RLock()
-        self.cache: dict[Path, tuple[int, list[dict[str, Any]]]] = {}
+        self.cache: dict[Path, tuple[tuple[int, int], list[dict[str, Any]]]] = {}
         self._adopt()
 
     def _adopt(self) -> None:
@@ -194,7 +200,8 @@ class Monitor:
             functions: dict[str, dict[str, Any]] = {}
             for path in sorted(paths):
                 try:
-                    stamp = path.stat().st_mtime_ns
+                    stat = path.stat()
+                    stamp = (stat.st_mtime_ns, stat.st_size)
                 except OSError:
                     continue
                 if path not in self.cache or self.cache[path][0] != stamp:
@@ -206,7 +213,7 @@ class Monitor:
                                 for row in data.values()
                                 if isinstance(row, dict) and isinstance(row.get("address"), str)]
                         self.cache[path] = (stamp, rows)
-                for row in self.cache.get(path, (0, []))[1]:
+                for row in self.cache.get(path, ((0, 0), []))[1]:
                     address = row["address"].lower().removeprefix("0x").lstrip("0") or "0"
                     prior = functions.get(address)
                     if prior is None or str(row.get("timestamp") or "") >= str(prior.get("timestamp") or ""):
@@ -241,6 +248,14 @@ class Monitor:
                     "updated": time.strftime("%H:%M:%S"), "output": str(self.work_dir)}
             if self.progress_file is not None:
                 snapshot.update(self.external_progress())
+            if self.event_glob:
+                event_paths = [p for p in self.work_dir.glob(self.event_glob)
+                         if p.is_file() and p.resolve().is_relative_to(self.work_dir)]
+                latest = max(event_paths, key=lambda p: p.stat().st_mtime_ns, default=None)
+                if latest:
+                    snapshot["agents"] = self.agent_events.read(latest)
+                snapshot["event_sources"] = [str(p.relative_to(self.work_dir)).replace("\\", "/")
+                                             for p in sorted(event_paths)]
             return snapshot
 
     def external_progress(self) -> dict[str, Any]:
@@ -335,8 +350,70 @@ def make_server(monitor: Monitor, port: int = 8765) -> ThreadingHTTPServer:
                 self.reply(200, html.replace("__TOKEN__", token), "text/html")
             elif self.path == "/api/status":
                 self.reply(200, json.dumps(monitor.snapshot()))
+            elif self.path == "/api/stream":
+                self.stream()
+            elif urlsplit(self.path).path == "/api/agent-history":
+                source = parse_qs(urlsplit(self.path).query).get("source", [""])[0]
+                allowed = {str(p.relative_to(monitor.work_dir)).replace("\\", "/"): p
+                           for p in monitor.work_dir.glob(monitor.event_glob or "__no_events__")
+                           if p.is_file() and p.resolve().is_relative_to(monitor.work_dir)}
+                if source not in allowed:
+                    self.reply(404, '{"error":"Unknown event source"}')
+                    return
+                reader = AgentEvents()
+                path = allowed[source]
+                # Bound historical reads; the live stream remains incremental.
+                for _ in range(32):
+                    agents = reader.read(path)
+                    if reader.offset >= path.stat().st_size:
+                        break
+                self.reply(200, json.dumps({"agents": agents, "truncated": reader.offset < path.stat().st_size}))
             else:
                 self.reply(404, '{"error":"Not found"}')
+
+        def stream(self) -> None:
+            from wsproto import ConnectionType, WSConnection
+            from wsproto.events import AcceptConnection, CloseConnection, Ping, TextMessage
+            from wsproto.utilities import ProtocolError
+
+            origin = f"http://127.0.0.1:{self.server.server_port}"
+            if self.headers.get("Origin") != origin or self.headers.get("Upgrade", "").lower() != "websocket":
+                self.reply(403, '{"error":"Stream request rejected"}')
+                return
+            ws = WSConnection(ConnectionType.SERVER)
+            self.close_connection = True
+            try:
+                ws.initiate_upgrade_connection(
+                    [(k.encode(), v.encode()) for k, v in self.headers.items()], "/api/stream")
+                list(ws.events())
+                self.connection.settimeout(5)
+                self.connection.sendall(ws.send(AcceptConnection()))
+                previous = ""
+                first = True
+                while True:
+                    data = monitor.snapshot()
+                    encoded = json.dumps(data)
+                    if encoded != previous:
+                        self.connection.sendall(ws.send(TextMessage(data=json.dumps({
+                            "type": "snapshot" if first else "update", "data": data}))))
+                        previous, first = encoded, False
+                    ready, _, _ = select.select([self.connection], [], [], 0.5)
+                    if ready:
+                        payload = self.connection.recv(4096)
+                        if not payload:
+                            return
+                        ws.receive_data(payload)
+                        for event in ws.events():
+                            if isinstance(event, CloseConnection):
+                                self.connection.sendall(ws.send(event.response()))
+                                return
+                            if isinstance(event, Ping):
+                                self.connection.sendall(ws.send(event.response()))
+                            if isinstance(event, TextMessage):
+                                self.connection.sendall(ws.send(CloseConnection(code=1008, reason="Read-only stream")))
+                                return
+            except (OSError, ProtocolError, ValueError):
+                return
 
         def do_POST(self) -> None:
             origin = f"http://127.0.0.1:{self.server.server_port}"
