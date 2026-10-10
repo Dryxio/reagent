@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from re_agent.config.loader import load_config
+from re_agent.config.loader import load_config, validate_config
 from re_agent.config.schema import ReAgentConfig
 
 
@@ -63,3 +63,50 @@ def test_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
     config = load_config(None)
     assert config.llm.provider == "openai"
     assert config.llm.model == "gpt-4o"
+
+
+@pytest.mark.parametrize(
+    ("attribute", "value", "message"),
+    [
+        ("max_review_rounds", 0, "orchestrator.max_review_rounds must be a positive integer"),
+        ("max_attempts_per_function", True, "orchestrator.max_attempts_per_function must be a positive integer"),
+        ("max_investigations", -1, "max_investigations must be a nonnegative integer"),
+    ],
+)
+def test_validate_config_rejects_orchestrator_boundaries(
+    attribute: str, value: object, message: str
+) -> None:
+    config = ReAgentConfig.create_default()
+    setattr(config.orchestrator, attribute, value)
+
+    with pytest.raises(ValueError, match=message):
+        validate_config(config)
+
+
+@pytest.mark.parametrize(
+    ("attribute", "value"),
+    [
+        ("build_commands", ["   "]),
+        ("test_commands", [["   ", "--quiet"]]),
+        ("runtime_commands", [42]),
+    ],
+)
+def test_validate_config_rejects_invalid_command_entries(attribute: str, value: object) -> None:
+    config = ReAgentConfig.create_default()
+    setattr(config.validation, attribute, value)
+
+    with pytest.raises(
+        ValueError, match=rf"validation.{attribute} must contain nonempty shell strings or argument arrays"
+    ):
+        validate_config(config)
+
+
+def test_validate_config_accepts_command_boundaries() -> None:
+    config = ReAgentConfig.create_default()
+    config.validation.build_commands = [" make ", ["python", "-m", "pytest"]]
+    config.validation.test_commands = []
+    config.validation.runtime_commands = [["app"]]
+    config.orchestrator.max_review_rounds = 1
+    config.orchestrator.max_investigations = 0
+
+    validate_config(config)
