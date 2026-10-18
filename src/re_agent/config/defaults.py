@@ -57,6 +57,12 @@ backend:
   cli_path: "ghidra-bridge"
   timeout_s: 45
 
+# Public-reference lookup is available on demand. Disable for offline/private work.
+search:
+  enabled: true
+  provider: "parallel"
+  timeout_s: 30
+
 parity:
   enabled: true
   call_count_warn_diff: 3

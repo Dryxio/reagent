@@ -17,6 +17,7 @@ from re_agent.config.schema import (
     ParityConfig,
     ProjectProfile,
     ReAgentConfig,
+    SearchConfig,
     ValidationConfig,
 )
 
@@ -184,6 +185,7 @@ def _build_config(raw: dict[str, Any]) -> ReAgentConfig:
         llm=_build_llm_config(raw.get("llm", {})),
         agents=_build_agents_config(raw.get("agents", {})),
         backend=_build_backend_config(raw.get("backend", {})),
+        search=_build_with_coercion(SearchConfig, raw.get("search", {})),
         parity=_build_parity_config(raw.get("parity", {})),
         orchestrator=_build_orchestrator_config(raw.get("orchestrator", {})),
         validation=_build_validation_config(raw.get("validation", {})),
@@ -240,6 +242,12 @@ def load_config(
 
 
 def validate_config(config: ReAgentConfig) -> None:
+    if type(config.search.enabled) is not bool:
+        raise ValueError("search.enabled must be a boolean")
+    if config.search.provider not in {"parallel", "none"}:
+        raise ValueError("search.provider must be parallel or none")
+    if type(config.search.timeout_s) is not int or config.search.timeout_s <= 0:
+        raise ValueError("search.timeout_s must be a positive integer")
     for name in (
         "max_review_rounds",
         "max_functions_per_class",

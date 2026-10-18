@@ -67,6 +67,7 @@ def reverse_single(
             objective_control_flow_tolerance=config.orchestrator.objective_control_flow_tolerance,
             investigation_enabled=config.orchestrator.investigation_enabled,
             max_investigations=config.orchestrator.max_investigations,
+            search_config=config.search,
             candidate_gate=gate,
             max_llm_calls=config.orchestrator.max_llm_calls_per_function,
         )
