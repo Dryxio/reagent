@@ -281,6 +281,13 @@ and can request additional read-only operations:
 - `vtable`, `global`, and `strings`
 - `context`, normalized `pcode`, and `cfg`
 
+The reverser also has on-demand public-reference `web_search` and `web_fetch`
+through free, keyless [Parallel Search MCP](https://docs.parallel.ai/integrations/mcp/search-mcp).
+Search uses Fast mode. These tools share the investigation budget and send the
+model's query or URL to Parallel. For private or offline work, set
+`search.enabled: false` before running. See [configuration](docs/configuration.md#public-reference-web-lookup)
+for controls and data handling.
+
 Evidence bundle data is also ingested into
 `reports/re-agent/knowledge-graph.json`, connecting functions, calls, globals,
 and strings. Unsupported bridge capabilities degrade gracefully.

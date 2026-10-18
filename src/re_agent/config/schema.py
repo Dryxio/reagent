@@ -91,6 +91,15 @@ class BackendConfig:
 
 
 @dataclass
+class SearchConfig:
+    """Remote public-reference tools used by the reverser on demand."""
+
+    enabled: bool = True
+    provider: str = "parallel"  # parallel | none
+    timeout_s: int = 30
+
+
+@dataclass
 class ParityConfig:
     """Static parity verification settings."""
 
@@ -166,6 +175,7 @@ class ReAgentConfig:
     output: OutputConfig = field(default_factory=OutputConfig)
     agents: AgentModelsConfig = field(default_factory=AgentModelsConfig)
     validation: ValidationConfig = field(default_factory=ValidationConfig)
+    search: SearchConfig = field(default_factory=SearchConfig)
 
     @classmethod
     def create_default(cls) -> ReAgentConfig:

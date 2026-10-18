@@ -13,7 +13,7 @@ from pathlib import Path
 from re_agent.agents.checker import CheckerAgent
 from re_agent.agents.reverser import ReverserAgent
 from re_agent.backend.protocol import REBackend
-from re_agent.config.schema import ProjectProfile
+from re_agent.config.schema import ProjectProfile, SearchConfig
 from re_agent.core.models import (
     CheckerVerdict,
     FunctionTarget,
@@ -47,6 +47,7 @@ def run_fix_loop(
     max_investigations: int = 8,
     candidate_gate: Callable[[ReversalResult], ReversalResult] | None = None,
     max_llm_calls: int = 80,
+    search_config: SearchConfig | None = None,
 ) -> ReversalResult:
     """Run the reverser->checker->fix loop up to max_rounds.
 
@@ -83,6 +84,7 @@ def run_fix_loop(
         report_dir=report_dir,
         investigation_enabled=investigation_enabled,
         max_investigations=max_investigations,
+        search_config=search_config,
     )
     checker = CheckerAgent(checker_llm, backend)
 

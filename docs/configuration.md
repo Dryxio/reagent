@@ -315,3 +315,41 @@ differential check in order. Missing checks mean no recorded execution, not a
 pass; older sessions retain their aggregate verdict without invented details.
 Acceptance means the configured policy accepted the candidate. It is not proof
 of equivalence, and selected-inventory coverage is not whole-program coverage.
+
+## Public-reference web lookup
+
+The reverser can resolve public C/C++ API and file-format questions using
+[Parallel Search MCP](https://docs.parallel.ai/integrations/mcp/search-mcp).
+An unconfigured installation makes `web_search` and `web_fetch` available on
+demand through `https://search.parallel.ai/mcp`, using the MCP SDK's Streamable
+HTTP transport. Search uses Fast mode and needs no account or API key. Existing
+model and backend selections remain in effect; ambient Parallel API keys are
+not read or sent.
+
+```yaml
+search:
+  enabled: true
+  provider: parallel # parallel | none
+  timeout_s: 30
+```
+
+Each requested web action uses one of `orchestrator.max_investigations` and runs
+only when `orchestrator.investigation_enabled` is true. No lookup runs until the
+model requests it. `timeout_s` bounds the whole connection, discovery and tool
+call. Transport failures, MCP tool errors and empty text are returned as tool errors;
+service responses, including limits, remain visible in the conversation, and
+there is no fallback to another provider. Cancellation propagates to the caller.
+
+The action shape is `{"actions":[{"tool":"web_search","target":"public API documentation query"}]}`;
+`web_fetch` takes one HTTP(S) URL as `target` and returns excerpts. Reference
+text, including source URLs, enters the existing evidence conversation with a
+12,000-character bound. Web content is untrusted reference material and cannot
+establish that a candidate matches the binary.
+
+**Remote data:** the model-selected query or URL is sent to Parallel. The agent
+is instructed to use public documentation queries only, but cannot determine
+whether an arbitrary symbol or query is confidential. For private or offline
+work, set `search.enabled: false` or `search.provider: none` before starting.
+These saved choices are honored. Disabling investigations or setting their
+budget to zero also prevents web calls. Existing configurations without a
+`search` section receive the on-demand default above.
