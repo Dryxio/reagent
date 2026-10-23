@@ -22,7 +22,7 @@ Supported CLI overrides > supported environment variables > YAML config > defaul
 
 ```yaml
 llm:
-  provider: "claude"        # claude | claude-cli | openai | openai-compat | codex
+  provider: "claude"        # claude | claude-cli | openai | openai-compat | orcarouter | codex
   model: "claude-sonnet-4-5-20250929"
   api_key: null
   base_url: null
@@ -37,6 +37,12 @@ Notes:
 
 - `claude` uses the Anthropic SDK and typically reads `ANTHROPIC_API_KEY`
 - `openai` and `openai-compat` use the OpenAI-compatible chat completions provider and typically read `OPENAI_API_KEY`
+- `orcarouter` is [OrcaRouter](https://www.orcarouter.ai) Cyber Inference, a named OpenAI-compatible provider for
+  authorized security work. It reads `llm.api_key` or `ORCAROUTER_API_KEY`, sends inference and model discovery to
+  `https://api.orcarouter.ai/v1`, and lists models with `re-agent models`. The default model is `orcarouter/auto`;
+  `orca/orcacyber-ultra-1.0` and `orca/orcacyber-zero-1.5` are the security-tier models for verified accounts, and
+  `orcarouter/fusion` is the general fallback. Override the inference origin with `llm.base_url`, `ORCA_API_BASE_URL`,
+  or a shared `ORCA_BASE_URL`. Keys are durable (no refresh grant), so a `401` requires replacing the key.
 - `codex` uses the local `codex` CLI and ChatGPT login credentials instead of an API key
 - `claude-cli` uses the local Claude Code CLI login. `cli_path`,
   `max_budget_usd`, and `effort` are optional.

@@ -62,8 +62,29 @@ def create_provider(config: LLMConfig) -> LLMProvider:
             timeout_s=config.timeout_s,
         )
 
+    if config.provider == "orcarouter":
+        from re_agent.llm.orcarouter import (
+            ORCAROUTER_DEFAULT_MODEL,
+            OrcaRouterProvider,
+        )
+
+        # LLMConfig's dataclass default is a Claude model id; a named
+        # OrcaRouter provider must not inherit it.
+        model = config.model
+        if not model or model == LLMConfig().model:
+            model = ORCAROUTER_DEFAULT_MODEL
+
+        return OrcaRouterProvider(
+            api_key=config.api_key,
+            model=model,
+            max_tokens=config.max_tokens,
+            temperature=config.temperature,
+            timeout_s=config.timeout_s,
+            base_url=config.base_url,
+        )
+
     raise ValueError(
         f"Unknown LLM provider: {config.provider!r}. "
         f"Supported providers: 'claude', 'claude-cli', 'openai', "
-        f"'openai-compat', 'codex'."
+        f"'openai-compat', 'orcarouter', 'codex'."
     )

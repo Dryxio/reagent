@@ -26,6 +26,24 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         if model.provider in {"claude-cli", "codex"}:
             executable = model.cli_path or ("claude" if model.provider == "claude-cli" else "codex")
             add(role + " executable", shutil.which(executable) is not None, executable)
+        elif model.provider == "orcarouter":
+            from re_agent.llm.orcarouter import (
+                ORCAROUTER_KEY_ENV,
+                ORCAROUTER_KEY_URL,
+                OrcaRouterError,
+                resolve_api_key,
+            )
+
+            try:
+                resolve_api_key(model.api_key)
+            except OrcaRouterError:
+                add(
+                    role + " OrcaRouter key",
+                    False,
+                    f"set llm.api_key or {ORCAROUTER_KEY_ENV}; create a key at {ORCAROUTER_KEY_URL}",
+                )
+            else:
+                add(role + " OrcaRouter key", True, "configured via llm.api_key or the named environment variable")
     validation = config.validation
     commands = validation.build_commands + validation.test_commands + validation.runtime_commands
     if validation.enabled and any(isinstance(command, str) for command in commands):
