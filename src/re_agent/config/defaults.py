@@ -36,6 +36,8 @@ llm:
   model: "claude-sonnet-4-5-20250929"
   # api_key: null  # Set via RE_AGENT_LLM_API_KEY env var
   # base_url: null  # Set via RE_AGENT_LLM_BASE_URL env var
+  # OrcaRouter Cyber Inference (OpenAI-compatible): set provider to "orcarouter",
+  # model to "orcarouter/auto", and provide llm.api_key or ORCAROUTER_API_KEY.
   max_tokens: 4096
   temperature: 0.0
   timeout_s: 1800

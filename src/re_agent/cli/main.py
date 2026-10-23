@@ -67,6 +67,19 @@ def build_parser() -> argparse.ArgumentParser:
     estimate_p.add_argument("--class", dest="class_name", help="Class name to estimate")
     estimate_p.add_argument("--limit", type=int, default=50, help="Maximum functions to inspect")
 
+    models_p = sub.add_parser(
+        "models",
+        help="List OrcaRouter Cyber Inference models discovered from the live catalog",
+    )
+    models_p.add_argument(
+        "--capability",
+        choices=["chat", "chat-image", "embedding", "image", "video", "rerank", "all"],
+        default="chat",
+        help="Entry point to filter for (default: chat)",
+    )
+    models_p.add_argument("--base-url", default=None, help="Override the OrcaRouter inference origin")
+    models_p.add_argument("--json", action="store_true", help="Emit JSON instead of a table")
+
     return parser
 
 
@@ -119,6 +132,11 @@ def _main(argv: list[str] | None = None) -> int:
         from re_agent.cli.cmd_estimate import cmd_estimate
 
         return cmd_estimate(args)
+
+    if args.command == "models":
+        from re_agent.cli.cmd_models import cmd_models
+
+        return cmd_models(args)
 
     parser.print_help()
     return 1

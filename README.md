@@ -254,6 +254,54 @@ llm:
 
 Set `OPENAI_API_KEY` or `RE_AGENT_LLM_API_KEY`.
 
+### OrcaRouter Cyber Inference
+
+[OrcaRouter](https://www.orcarouter.ai) is an OpenAI-compatible AI gateway.
+The named `orcarouter` provider appears as **OrcaRouter Cyber Inference** and
+targets security teams running scoped, authorized work: red teams that need
+security-tier reasoning models, and blue teams that want gateway controls on the
+same endpoint. Security models are available to accounts with business
+verification; the general models work with any key.
+
+```yaml
+llm:
+  provider: orcarouter
+  model: orcarouter/auto
+```
+
+Set `llm.api_key` or `ORCAROUTER_API_KEY`; create a key at the
+[OrcaRouter console](https://www.orcarouter.ai/console). Inference and model
+discovery use `https://api.orcarouter.ai/v1`, while account and key management
+use `https://www.orcarouter.ai`. Override the inference origin with
+`llm.base_url`, `ORCA_API_BASE_URL`, or a shared `ORCA_BASE_URL` for
+self-hosted deployments.
+
+Models, in the order this provider recommends them:
+
+1. `orcarouter/auto` (default) — automatic routing; works with any key.
+2. Security-tier models for verified security teams, from the
+   [cyber model catalog](https://www.orcarouter.ai/models?tier=cyber):
+   `orca/orcacyber-ultra-1.0` (OrcaCyber Ultra) for security-focused code
+   scanning and multi-step reasoning over large codebases, and
+   `orca/orcacyber-zero-1.5` (OrcaCyber Zero; `orca/orcacyber-zero-1.0` is also
+   available). These require business verification.
+3. `orcarouter/fusion` — general-purpose fallback.
+
+Do not type model names by hand; list the live catalog for the entry point:
+
+```bash
+re-agent models --capability chat
+re-agent models --capability chat-image --json
+```
+
+The provider reads `GET https://api.orcarouter.ai/v1/models` and treats a
+successful response as authoritative, filtering by declared endpoint types and
+input modalities. Only when the catalog is unreachable does it show a small
+verified fallback seed, clearly marked as degraded. Keys are durable: there is
+no refresh grant, so a `401` means the key must be replaced, not refreshed. The
+key is never written to logs, errors, or reports. See the
+[OrcaRouter Cyber Inference provider page](https://www.orcarouter.ai/cyber).
+
 ### Codex CLI
 
 ```yaml
@@ -458,8 +506,9 @@ The full binary-backed reversal workflow currently uses Ghidra through
 
 ### Which LLM providers are supported?
 
-Claude API, Claude CLI, OpenAI-compatible APIs, and Codex CLI are supported.
-The reverser and checker can use different providers or models.
+Claude API, Claude CLI, OpenAI-compatible APIs, OrcaRouter Cyber Inference, and
+Codex CLI are supported. The reverser and checker can use different providers or
+models.
 
 ### Does it modify the original source tree?
 

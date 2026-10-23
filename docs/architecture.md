@@ -18,7 +18,8 @@ CLI -> Config -> Orchestrator -> Evidence Loop -> LLM Providers
 - **Config**: YAML + supported environment/CLI overrides, project profiles
 - **Orchestrator**: Single function or class-level auto-advance
 - **Agents**: independently configurable Reverser + Checker with fix loop
-- **LLM**: Protocol-based providers (Claude API/CLI, OpenAI-compatible, Codex CLI)
+- **LLM**: Protocol-based providers (Claude API/CLI, OpenAI-compatible,
+  OrcaRouter Cyber Inference, Codex CLI)
 - **Backend**: RE tool abstraction with context, vtable, global, string,
   normalized P-code, and CFG capability flags
 - **Parity**: 11-signal verification engine with scoring
